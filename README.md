@@ -5,15 +5,15 @@
 - **繪師帳**：記錄接到的委託、收款、死線，可以做公開排單。
 - **委託者帳**：記錄你委託繪師的進度、付款、交稿日，並為每位繪師建一張資料卡（排單頁、價目表、收款方式）。
 
-目前版本：**1.3.0**｜製作人 肯茲｜問題回報：leihustore@gmail.com
+目前版本：**1.4.0**｜製作人 肯茲｜問題回報：leihustore@gmail.com
 
 ## 下載
 
 | 版本 | 下載 | 說明 |
 |---|---|---|
-| Windows 安裝版 | [ArtistLedger-Setup-1.3.0.exe](https://github.com/LeihuTW/artist_ledger/raw/main/downloads/ArtistLedger-Setup-1.3.0.exe) | 一般使用者選這個 |
-| Windows 免安裝版 | [ArtistLedger-Portable-1.3.0.exe](https://github.com/LeihuTW/artist_ledger/raw/main/downloads/ArtistLedger-Portable-1.3.0.exe) | 解壓縮到資料夾就能用，可放隨身碟 |
-| 手機版 | **https://leihutw.github.io/artist_ledger/** | 用手機瀏覽器打開，加到主畫面 |
+| Windows 安裝版 | [ArtistLedger-Setup-1.4.0.exe](https://github.com/LeihuTW/artist_ledger/raw/main/downloads/ArtistLedger-Setup-1.4.0.exe) | 一般使用者選這個 |
+| Windows 免安裝版 | [ArtistLedger-Portable-1.4.0.exe](https://github.com/LeihuTW/artist_ledger/raw/main/downloads/ArtistLedger-Portable-1.4.0.exe) | 解壓縮到資料夾就能用，可放隨身碟 |
+| 網頁版本 | **[https://leihutw.github.io/artist_ledger/](https://leihutw.github.io/artist_ledger/)** | 用手機瀏覽器打開，加到主畫面 |
 
 檔案檢查碼在 [`downloads/SHA256.txt`](downloads/SHA256.txt)。
 
@@ -25,30 +25,33 @@
 - 修改過程圖版本與並排比較、完稿圖庫、交稿行事曆、到期提醒。
 - 自動備份（電腦版）：改完一分鐘後、開機時、每 6 小時自動備份到你指定的資料夾（例如 Google 雲端硬碟電腦版、外接硬碟）。
 - 電腦與手機同步：存在你自己的 Google 試算表。
-- 匯出 Excel／CSV、Google 表格同步、隱私模式（直播截圖時打碼）、深色模式。
+- 匯出 Excel／CSV、Google 表格同步、隱私模式（直播截圖時打碼）、深色模式、畫面大小 100%～150%。
+- **我的資料卡**：做一張可分享的繪師／委託者資料卡圖片，另附「名片代碼」，對方貼到名冊就能直接建立資料卡。
+- **共享個案頁**：一單產生一個網址，對方用瀏覽器就能看進度、交稿日、你寫的備註並留言，留言會自動進到聯繫紀錄。
+- **雙方同步**：對方也用繪師委託帳本時，貼上共享網址，這一單的進度、交稿日和對話會雙向同步。
 
 ## 電腦版（Windows 10／11）
 
 ### 安裝版
-1. 下載 `ArtistLedger-Setup-1.3.0.exe` 並執行。
+1. 下載 `ArtistLedger-Setup-1.4.0.exe` 並執行。
 2. Windows 若跳出「Windows 已保護您的電腦」，按「其他資訊 › 仍要執行」（程式沒有付費的程式碼簽章，所以會出現這個提示）。
 3. 不需要系統管理員權限。資料存在「文件\ArtistLedger」，解除安裝時不會刪除。
 4. 第一次開啟會有設定精靈，記得到「設定與備份」加一個備份位置。
 
 ### 免安裝版
-1. 下載 `ArtistLedger-Portable-1.3.0.exe` 並執行，選一個資料夾（例如 `D:\ArtistLedger-Portable`），程式會解壓縮到那裡。
+1. 下載 `ArtistLedger-Portable-1.4.0.exe` 並執行，選一個資料夾（例如 `D:\ArtistLedger-Portable`），程式會解壓縮到那裡。
 2. 之後執行資料夾裡的 `ArtistLedger.exe`。資料存在同資料夾的 `data`，整個資料夾可以帶著走。
 3. 請不要刪掉資料夾裡的 `portable.txt`，也不要放在「Program Files」。
 4. 免安裝版沒有開始功能表捷徑，Windows 可能不會跳提醒，到「設定與備份」按「建立桌面與開始功能表捷徑」即可。
 
 ### 從舊版升級
-直接安裝新版即可，資料不會消失。若有用 Google 表格同步，請到「Google 表格同步」頁重新複製同步腳本，貼到 Apps Script 並重新部署一次。
+直接安裝新版即可，資料不會消失。若有用 Google 表格同步，請到「Google 表格同步」頁重新複製同步腳本，貼到 Apps Script 全部取代，再到「部署 › 管理部署作業 › 編輯 › 版本：新版本」重新部署一次。1.4.0 的共享個案頁需要這個新版腳本。
 
-## 手機版（安卓、iPhone）
+## 網頁版本
 
 手機版是可以「加到主畫面」的網頁 App，畫面和功能與電腦版幾乎相同。
 
-1. 用手機瀏覽器打開 **https://leihutw.github.io/artist_ledger/**（安卓用 Chrome、iPhone 用 Safari）。
+1. 用手機瀏覽器打開 **[https://leihutw.github.io/artist_ledger/](https://leihutw.github.io/artist_ledger/)**（安卓用 Chrome、iPhone 用 Safari）。
 2. 安卓：右上角選單 › 「加到主畫面」或「安裝應用程式」。iPhone：分享按鈕 › 「加入主畫面」。
 3. 從桌面圖示打開就是全螢幕，跟一般 App 一樣。開過一次之後，沒有網路也能打開和記帳。
 
@@ -62,6 +65,22 @@
 4. 之後兩邊會自動同步：修改後約 15 秒上傳，打開 App 時拉取最新資料。繪師帳和委託者帳都會同步。
 
 資料存在你自己的 Google 試算表，不會經過其他伺服器。連線代碼等於同步密碼，請不要公開。圖片不會同步，只同步文字資料。
+
+## 分享給對方
+
+### 我的資料卡
+1. 左側選單（手機在「更多」）點「我的資料卡」，按「開始填寫」。
+2. 填好後按「下載圖片」（手機是「分享／下載圖片」，可以直接傳到 LINE、Discord），或按「複製名片代碼」。
+3. 對方如果也用繪師委託帳本，到名冊按「貼上名片代碼」就會建立一張資料卡。
+
+資料卡會給別人看，不要放完整帳號、地址或電話。
+
+### 共享個案頁與雙方同步
+1. 先完成「Google 表格同步」設定（新版腳本）。
+2. 打開一筆委託，右側「共享個案頁」按「開啟共享」，同步後按「複製」把網址傳給對方。
+3. 對方用瀏覽器打開就能看進度、交稿日、階段日期和你寫的備註，也能直接留言；留言會在你下次同步時出現在對話裡，並記進聯繫紀錄。
+4. 對方也用這個程式的話，在「委託總覽」按「加入共享個案」貼上網址，這一單就會雙方同步，對方不需要自己的同步腳本。
+5. 金額預設不分享，要勾「顯示金額與已付款」才會出現。按「停止共享」後網址就打不開了。
 
 ## 授權
 本程式以 [PolyForm Noncommercial License 1.0.0](LICENSE.md) 授權：可以免費個人使用、學習與非商業用途，**不可用於商業用途**（例如販售本程式、改作後販售、或公司營利使用）。商業授權請來信 leihustore@gmail.com。
