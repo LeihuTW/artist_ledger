@@ -4,7 +4,7 @@ const M = window.Model;
 // window.api 由 preload 提供
 
 // 外觀：跟隨系統／淺色／深色（存在這台裝置，不會同步）
-const THEMES = { auto: '跟隨系統', light: '淺色', dark: '深色' };
+const THEMES = { auto: '系統', light: '淺色', dark: '深色' };
 function themePref() { try { return THEMES[localStorage.getItem('al-theme')] ? localStorage.getItem('al-theme') : 'auto'; } catch (e) { return 'auto'; } }
 function applyTheme() {
   const t = themePref();
@@ -14,6 +14,22 @@ function applyTheme() {
 }
 applyTheme();
 if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme); } catch (e) { /* 舊瀏覽器 */ } }
+
+// 畫面大小：字和介面一起放大，最大 150%；「依視窗」會隨視窗寬度自動調整（存在這台裝置）
+const ZOOM_LIST = [['auto', '依視窗'], ['1', '100%'], ['1.1', '110%'], ['1.25', '125%'], ['1.4', '140%'], ['1.5', '150%']];
+const ZOOMS = Object.fromEntries(ZOOM_LIST);
+// 作品圖庫一排幾張（只存在這台裝置）
+function galleryCols() { try { const v = localStorage.getItem('al-gcols'); return ['3', '6', '8'].includes(v) ? v : '6'; } catch (e) { return '6'; } }
+function zoomPref() { try { const v = localStorage.getItem('al-zoom'); return ZOOMS[v] ? v : 'auto'; } catch (e) { return 'auto'; } }
+function zoomFactor() {
+  const z = zoomPref();
+  if (z !== 'auto') return Number(z);
+  const w = window.outerWidth || window.innerWidth || 1280; // outerWidth 不受縮放影響
+  return Math.min(1.5, Math.max(1, Math.round((w / 1440) * 20) / 20));
+}
+function applyZoom() { if (window.api && api.setZoom) api.setZoom(zoomFactor()); }
+applyZoom();
+window.addEventListener('resize', () => { if (zoomPref() !== 'auto') return; clearTimeout(applyZoom._t); applyZoom._t = setTimeout(applyZoom, 150); });
 
 const S = {
   db: null, info: null, pendingDb: null, modal: null, syncRunning: false, backupRunning: false,
@@ -49,6 +65,8 @@ const maskTxt = (v) => { const t = String(v ?? ''); if (!t) return t; return t.l
 const pv = (v) => PV() ? maskTxt(v) : String(v ?? '');
 const amt = (n) => PV() ? '●●●' : Number(n || 0).toLocaleString('zh-TW');
 const money = (n) => `${S.db.settings.currency} ${amt(n)}`;
+// 常用貨幣（設定裡的下拉選單），不在清單裡的可以選「自訂」
+const CURRENCIES = [['NT$', '新台幣'], ['HK$', '港幣'], ['US$', '美元'], ['¥', '日圓'], ['₩', '韓元'], ['RMB', '人民幣'], ['€', '歐元'], ['£', '英鎊'], ['S$', '新加坡幣'], ['MOP', '澳門幣'], ['A$', '澳幣'], ['C$', '加幣']];
 const imgUrl = (rel) => (api.fileUrl ? api.fileUrl(rel) : 'ledger://f/' + String(rel).split('/').map(encodeURIComponent).join('/'));
 const IMG_EXT = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
 const RISKY = /\.(exe|com|bat|cmd|ps1|psm1|psd1|vbs|vbe|js|jse|wsf|wsh|ws|msi|msp|mst|scr|pif|lnk|url|hta|cpl|jar|reg|inf|scf|dll|sys|appx|appxbundle|msix|msixbundle|application|gadget|iso|img|vhd|vhdx|chm)$/i;
@@ -90,10 +108,10 @@ function render() {
   if (!S.db) return;
   document.body.classList.toggle('privacy', PV());
   const r = route();
-  const views = { overview: vOverview, c: vCommission, clients: vClients, client: vClient, payments: vPayments, calendar: vCalendar, gallery: vGallery, sync: vSync, settings: vSettings, more: vMore };
+  const views = { overview: vOverview, c: vCommission, clients: vClients, client: vClient, payments: vPayments, calendar: vCalendar, gallery: vGallery, sync: vSync, settings: vSettings, more: vMore, mycard: vMyCard };
   const navKey = { c: 'overview', client: 'clients' }[r.name] || r.name;
   document.querySelectorAll('#side a').forEach((a) => a.classList.toggle('on', a.dataset.nav === navKey));
-  const tabKey = ['gallery', 'sync', 'settings'].includes(navKey) ? 'more' : navKey;
+  const tabKey = ['gallery', 'sync', 'settings', 'mycard'].includes(navKey) ? 'more' : navKey;
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.nav === tabKey));
   sideNav();
   const fn = views[r.name];
@@ -102,6 +120,7 @@ function render() {
   if (render._last === location.hash) $('#view').scrollTop = scroll;
   render._last = location.hash;
   sideStatus();
+  if (r.name === 'mycard') afterRenderCard();
   quickRoutes(r);
 }
 
@@ -137,8 +156,7 @@ function sideNav() {
   });
   document.querySelectorAll('[data-book]').forEach((b) => { const on = b.dataset.book === BOOK(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); });
   const w = $('#side [data-act=openWidget]'); if (w) w.hidden = CLIENT() || WEB();
-  const brand = $('#side .brand small'); if (brand) brand.textContent = CLIENT() ? '委託者版' : '繪師版';
-  document.title = CLIENT() ? '繪師委託帳本｜委託者' : '繪師委託帳本';
+  document.title = '繪師委託帳本';
 }
 
 // ───────── 流程：進度變更、交付檢查、結案、收款連動 ─────────
@@ -331,6 +349,7 @@ function vOverview() {
       <label class="search"><span aria-hidden="true">🔍</span><input type="search" data-input="q" value="${esc(v.q)}" placeholder="搜尋委託人、暱稱、編號、項目" aria-label="搜尋"></label>
       <button class="btn" data-act="exportXlsx">匯出 Excel</button>
       <button class="btn" data-act="exportCsv">匯出 CSV</button>
+      <button class="btn" data-act="followCase" title="貼上對方給的共享個案網址，雙方同步進度與對話">加入共享個案</button>
       <button class="btn pri" data-act="newCommission">＋ 新增委託</button>
     </div>
   </div>
@@ -452,6 +471,7 @@ function vCommission(id) {
         <h2>參考資料（這筆委託）</h2>
         <div class="mt">${thumbs(c.refs, 'refs', c.id)}</div>
         ${dropZone('refs', c.id, '＋ 拖曳或點選加入參考圖、委託單截圖')}
+        ${refItemsBlock('comm', c.id, c.refItems)}
         ${cl && cl.refs.length ? `<p class="hint">委託人的角色設定圖在 <a href="#/client/${cl.id}">委託人資料卡</a>（${cl.refs.length} 張）。</p>` : ''}
       </section>
       <section class="panel">
@@ -462,6 +482,7 @@ function vCommission(id) {
     </div>
 
     <aside class="aside">
+      ${casePanel(c)}
       <section class="${d.cls ? 'warnpanel' : 'panel'}">
         <h2>死線</h2>
         <div style="font-size:28px;font-weight:700;margin-top:8px">${c.deadline ? `${md(c.deadline)}（${wk(c.deadline)}）` : '未定'}</div>
@@ -544,6 +565,7 @@ function vClients() {
     .sort((a, b) => nickOf(a).localeCompare(nickOf(b), 'zh-Hant'));
   return `<div class="between"><h1>委託人名冊</h1>
     <div class="row"><label class="search"><span aria-hidden="true">🔍</span><input type="search" data-input="q" value="${esc(S.view.q)}" placeholder="搜尋名字、標籤、備註、委託項目" aria-label="搜尋"></label>
+    <button class="btn" data-act="cardPaste">貼上名片代碼</button>
     <button class="btn pri" data-act="newClient">＋ 新增委託人</button></div></div>
     ${tags.length ? `<div class="tagbar mt" role="group" aria-label="依標籤篩選"><button class="tchip${tag ? '' : ' on'}" data-act="ctag" data-tag="" aria-pressed="${!tag}">全部 ${S.db.clients.length}</button>${tags.map(([t, n]) => `<button class="tchip${t === tag ? ' on' : ''}" data-act="ctag" data-tag="${esc(t)}" aria-pressed="${t === tag}">#${esc(t)} ${n}</button>`).join('')}</div>` : ''}
     ${q || tag ? `<p class="sub" style="margin:8px 0 0">找到 ${list.length} 位</p>` : ''}
@@ -612,7 +634,8 @@ function vClient(id) {
     <div class="main" style="padding-top:26px">
       <section class="panel"><h2>設定圖／參考資料</h2>
         <div class="mt">${thumbs(cl.refs, 'clientRefs', cl.id)}</div>
-        ${dropZone('clientRefs', cl.id, '＋ 拖曳角色設定圖、配色表、參考姿勢到這裡')}</section>
+        ${dropZone('clientRefs', cl.id, '＋ 拖曳角色設定圖、配色表、參考姿勢到這裡')}
+        ${refItemsBlock('client', cl.id, cl.refItems)}</section>
       <section class="panel"><h2>完成作品</h2>
         <div class="thumbs mt">${finals.map(({ f, c }) => `<figure class="thumb"><button class="img" data-act="view" data-slot="finals" data-owner="${c.id}" data-fid="${f.id}" aria-label="檢視">${isImg(f) ? `<img src="${imgUrl(f.file)}" alt="" loading="lazy">` : `<span class="file-ico">${esc(extOf(f))}</span>`}</button>
           <figcaption>${esc(c.title)}（${esc((c.closedAt || c.startDate || '').slice(0, 7))}）</figcaption></figure>`).join('') || '<div class="sub">委託完成後，在單筆委託裡加入完稿圖就會出現在這裡。</div>'}</div></section>
@@ -698,8 +721,10 @@ function vGallery() {
     if (S.view.galleryRev) for (const r of c.revisions) if (r.image) items.push({ f: r.image, c, slot: 'rev', label: r.ver, rid: r.id });
   }
   items.sort((a, b) => (b.f.addedAt || '').localeCompare(a.f.addedAt || ''));
-  return `<div class="between"><h1>作品圖庫</h1><label class="chk"><input type="checkbox" data-chg="galleryRev" ${S.view.galleryRev ? 'checked' : ''}> 也顯示修改過程圖</label></div>
-  <div class="thumbs mt" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))">${items.map((x) => `
+  const gc = galleryCols();
+  return `<div class="between"><h1>作品圖庫</h1><div class="row"><label class="chk"><input type="checkbox" data-chg="galleryRev" ${S.view.galleryRev ? 'checked' : ''}> 也顯示修改過程圖</label>
+    <div class="seg" role="group" aria-label="一排幾張">${['3', '6', '8'].map((n) => `<button type="button" data-act="gcols" data-v="${n}" aria-pressed="${n === gc}" class="${n === gc ? 'on' : ''}">${n} 欄</button>`).join('')}</div></div></div>
+  <div class="thumbs gal gcols-${gc} mt">${items.map((x) => `
     <figure class="thumb"><button class="img" data-act="${x.slot === 'rev' ? 'viewRev' : 'view'}" data-slot="${x.slot}" data-owner="${x.c.id}" data-fid="${x.f.id}" data-rid="${x.rid || ''}" aria-label="檢視">
       ${isImg(x.f) ? `<img src="${imgUrl(x.f.file)}" alt="" loading="lazy">` : `<span class="file-ico">${esc(extOf(x.f))}</span>`}</button>
       <figcaption><a href="#/c/${x.c.id}">${esc(nickOf(clientOf(x.c)))}｜${esc(x.c.title)}</a> <span class="sub">${esc(x.label)}</span>${x.f.caption ? `<div class="sub" style="font-size:12px;white-space:pre-wrap">${esc(x.f.caption)}</div>` : ''}</figcaption></figure>`).join('') || '<div class="panel empty">還沒有作品。在單筆委託的「完成作品」加入完稿圖就會出現在這裡。</div>'}</div>`;
@@ -720,7 +745,7 @@ function vSync() {
     <button class="btn pri" data-act="runSync" ${s.url && !S.syncRunning ? '' : 'disabled'}>立即同步</button></div></div>
   <div class="sub mt">${status}</div>
   <div class="warnpanel mt" style="padding:10px 14px;line-height:1.7"><b>請不要把整份試算表設成「知道連結的人都能檢視」</b>，裡面也有收款明細和內部資料。${cl ? '' : '要給委託人看進度，請分享下方的「公開網址」。'}如果以前用過「檔案 › 共用 › 發布到網路」，請回到試算表取消發布。</div>
-  ${s.url && m.pageVer && m.pageVer < 3 ? '<div class="warnpanel mt" style="padding:10px 14px">v1.3 更新了同步腳本（新增電腦與手機同步）。請按「複製同步腳本」，到 Apps Script 全部貼上取代，再到「部署 › 管理部署作業 › 編輯 › 版本：新版本」重新部署一次。</div>' : ''}
+  ${s.url && m.pageVer && m.pageVer < 4 ? '<div class="warnpanel mt" style="padding:10px 14px">v1.4 更新了同步腳本（新增共享個案頁）。請按「複製同步腳本」，到 Apps Script 全部貼上取代，再到「部署 › 管理部署作業 › 編輯 › 版本：新版本」重新部署一次。</div>' : ''}
   ${cloudPanel()}
   <div class="split mt">
     <div class="aside" style="max-width:460px">
@@ -813,7 +838,8 @@ function vSettings() {
       <section class="panel col">
         <h2>外觀</h2>
         <div class="seg theme-seg" role="group" aria-label="外觀">${Object.entries(THEMES).map(([k, v]) => `<button type="button" data-act="theme" data-v="${k}" class="${themePref() === k ? 'on' : ''}" aria-pressed="${themePref() === k}">${v}</button>`).join('')}</div>
-        <p class="hint" style="margin:0">深色模式晚上看比較不刺眼。這個設定只存在這台裝置。</p>
+        <h3 class="sub" style="font-weight:500;margin:4px 0 0">畫面大小</h3>
+        <div class="seg" role="group" aria-label="畫面大小" style="max-width:560px">${ZOOM_LIST.map(([k, v]) => `<button type="button" data-act="zoom" data-v="${k}" class="${zoomPref() === k ? 'on' : ''}" aria-pressed="${zoomPref() === k}">${v}</button>`).join('')}</div>
       </section>
       ${WEB() ? `<section class="panel col">
         <h2>備份</h2>
@@ -874,21 +900,25 @@ function vSettings() {
         <label class="f">提前幾天跳通知（用逗號分隔）<input type="text" data-chg="reminderDays" value="${esc(set.reminderDays.join(', '))}"></label>
         <label class="f">交付後幾天還沒收齊尾款就提醒（0＝不提醒）<input type="number" min="0" max="90" data-chg="unpaidRemindDays" value="${set.unpaidRemindDays}"></label>
         <label class="f">預設免費修改次數<input type="number" min="0" max="50" data-chg="freeRevisions" value="${set.freeRevisions}"></label>
-        <label class="f">委託類型選項（用逗號分隔）<input type="text" data-chg="commissionTypes" value="${esc(set.commissionTypes.join(', '))}"></label>
-        <label class="f">貨幣符號<input type="text" data-chg="currency" value="${esc(set.currency)}"></label>
+        <div class="f">委託類型選項<span class="hint" style="margin:0">點一下可以改名，按 × 刪除，按 ＋ 新增</span>${chipEditor('commissionTypes', set.commissionTypes, '新增類型')}</div>
+        ${(() => {
+          const known = !S.view.customCur && CURRENCIES.some(([v]) => v === set.currency);
+          return `<label class="f">貨幣符號<select data-chg="currencySel">${CURRENCIES.map(([v, n]) => `<option value="${esc(v)}"${v === set.currency ? ' selected' : ''}>${esc(v)}｜${esc(n)}</option>`).join('')}<option value="__c"${known ? '' : ' selected'}>自訂…</option></select>
+          ${known ? '' : `<input type="text" data-chg="currency" value="${esc(set.currency)}" placeholder="輸入貨幣符號" aria-label="自訂貨幣符號" style="margin-top:6px">`}</label>`;
+        })()}
       </section>
       <section class="panel col">
         <h2>收款帳戶</h2>
         <p class="hint" style="margin:0">記錄錢收到哪裡，方便對帳。<b>建議只寫銀行名稱和末五碼</b>，不要存完整帳號。</p>
         ${set.payAccounts.map((a) => `<div class="row" style="flex-wrap:nowrap">
-          <input type="text" value="${esc(a.label)}" data-chg="accLabel" data-id="${a.id}" aria-label="帳戶名稱" style="flex:1">
+          <input type="text" value="${esc(a.label)}" data-chg="accLabel" data-id="${a.id}" aria-label="帳戶名稱" placeholder="名稱" style="flex:1">
           <input type="text" value="${esc(a.detail)}" data-chg="accDetail" data-id="${a.id}" aria-label="帳戶說明" placeholder="說明" style="flex:1">
           <button class="btn sm ghost danger" data-act="rmAccount" data-id="${a.id}" aria-label="刪除帳戶">×</button></div>`).join('') || '<div class="sub">還沒有收款帳戶</div>'}
         <form class="row" data-form="addAccount" style="flex-wrap:nowrap">
-          <input type="text" name="label" placeholder="名稱，例：中信 末五碼 12345" aria-label="帳戶名稱" style="flex:1">
-          <input type="text" name="detail" placeholder="說明，例：委託專用" aria-label="帳戶說明" style="flex:1">
+          <input type="text" name="label" placeholder="名稱" title="例：中信 末五碼 12345（不要填完整帳號）" aria-label="帳戶名稱" style="flex:1">
+          <input type="text" name="detail" placeholder="說明" title="例：委託專用" aria-label="帳戶說明" style="flex:1">
           <button class="btn sm" type="submit">新增</button></form>
-        <label class="f">款項來源選項（用逗號分隔）<input type="text" data-chg="paySources" value="${esc(set.paySources.join(', '))}"></label>
+        <div class="f">款項來源選項<span class="hint" style="margin:0">點一下可以改名，按 × 刪除，按 ＋ 新增</span>${chipEditor('paySources', set.paySources, '新增來源')}</div>
       </section>
       <section class="panel col" style="gap:4px">
         <h2 style="margin-bottom:6px">${CLIENT() || WEB() ? '顯示' : '小工具與啟動'}</h2>
@@ -942,6 +972,7 @@ function vSettings() {
 function vMore() {
   return `<h1>更多</h1>
   <div class="more-list mt">
+    <a href="#/mycard">我的資料卡（分享給別人）</a>
     <a href="#/gallery">作品圖庫</a>
     <a href="#/sync">Google 表格同步・電腦與手機同步</a>
     <a href="#/settings">設定與備份・深色模式</a>
@@ -959,6 +990,7 @@ function openModal(html, opts = {}) {
   root.innerHTML = tr(`<div class="modal-bg" data-bg="1"><div class="modal ${opts.wide ? 'wide' : ''} ${opts.cls || ''}" role="dialog" aria-modal="true">${note}${html}</div></div>`);
   S.modal = opts;
   const f = root.querySelector('form');
+  if (f) { opts.hasForm = true; f.addEventListener('input', () => { opts.dirty = true; }); f.addEventListener('change', () => { opts.dirty = true; }); }
   if (f) f.addEventListener('submit', async (e) => {
     e.preventDefault();
     const ok = await opts.onSubmit(new FormData(f), f);
@@ -1002,7 +1034,12 @@ function formCommission(c, presetClient) {
       <option value="__new"${!c.clientId ? ' selected' : ''}>＋ 新委託人…</option></select></label>
     <label class="f" data-newclient-box data-q>新委託人暱稱<input type="text" name="newClient" placeholder="${CLIENT() ? '輸入名字就會建立一張繪師資料卡' : '之後可以再補完整資料'}"></label>
     <label class="f" data-q>${CLIENT() ? '委託什麼' : '項目名稱'}<input type="text" name="title" value="${esc(c.title)}" placeholder="例：VTuber 立繪拆件" required></label>
-    <label class="f">類型<input type="text" name="type" value="${esc(c.type)}" list="types-dl"><datalist id="types-dl">${set.commissionTypes.map((t) => `<option value="${esc(t)}">`).join('')}</datalist></label>
+    ${(() => {
+      // 類型用一般下拉選單（不會因為已經有值就只剩篩選結果）；選「其他…」才自己輸入
+      const opts = [...new Set([...set.commissionTypes, ...(c.type ? [c.type] : [])])];
+      return `<label class="f">類型<select name="type" data-typesel><option value="">（不分類）</option>${opts.map((t) => `<option value="${esc(t)}"${t === c.type ? ' selected' : ''}>${esc(t)}</option>`).join('')}<option value="__c">其他（自己輸入）…</option></select>
+      <input type="text" name="typeCustom" data-typecustom placeholder="輸入類型名稱" aria-label="自訂類型" style="display:none;margin-top:6px"></label>`;
+    })()}
     <label class="f">接單日<input type="date" name="startDate" value="${esc(c.startDate)}"></label>
     <label class="f" data-q>死線${CLIENT() ? '（可不填）' : ''}<input type="date" name="deadline" value="${esc(c.deadline)}"></label>
     <label class="f" data-q>報價金額<input type="number" min="0" name="price" value="${esc(c.price)}"></label>
@@ -1034,14 +1071,21 @@ function formCommission(c, presetClient) {
         set.entryMode = q ? 'quick' : 'full';
       }));
       const pm = f.publicMode || { value: 'nick' }, hint = root.querySelector('[data-pm-hint]') || {};
-      const onType = () => {
-        if (f.type.value.trim() === '商業案' && pm.value === 'nick' && f.publicMode) { pm.value = 'anon'; hint.textContent = '商業案已自動改為匿名顯示，可以再自己調整'; }
+      const tSel = f.type, tCus = f.typeCustom;
+      const getType = () => (tSel.value === '__c' ? tCus.value : tSel.value).trim();
+      const showCus = () => { const on = tSel.value === '__c'; tCus.style.display = on ? '' : 'none'; if (on) tCus.focus(); };
+      const setType = (v) => {
+        if (!v) { tSel.value = ''; } else if ([...tSel.options].some((o) => o.value === v && v !== '__c')) { tSel.value = v; } else { tSel.value = '__c'; tCus.value = v; }
+        tCus.style.display = tSel.value === '__c' ? '' : 'none';
       };
-      f.type.addEventListener('change', onType); f.type.addEventListener('input', onType);
+      const onType = () => {
+        if (getType() === '商業案' && pm.value === 'nick' && f.publicMode) { pm.value = 'anon'; hint.textContent = '商業案已自動改為匿名顯示，可以再自己調整'; }
+      };
+      tSel.addEventListener('change', () => { showCus(); onType(); }); tCus.addEventListener('input', onType);
       const tsel = root.querySelector('[data-tpl]');
       if (tsel) tsel.addEventListener('change', () => {
         const t = tpls.find((x) => x.id === tsel.value); if (!t) return;
-        if (t.type) f.type.value = t.type;
+        if (t.type) setType(t.type);
         if (!f.title.value.trim()) f.title.value = t.type || t.name;
         if (t.price !== '' && t.price !== undefined) f.price.value = t.price;
         if (t.freeRevisions !== '' && t.freeRevisions !== undefined) f.freeRevisions.value = t.freeRevisions;
@@ -1061,12 +1105,12 @@ function formCommission(c, presetClient) {
       if (clientId === '__new') {
         const nick = String(fd.get('newClient') || '').trim();
         if (!nick) { toast('請填新委託人的暱稱'); return false; }
-        const cl = { id: uid(), name: '', nickname: nick, tags: [], socials: [], contacts: [], replyTime: '', notes: '', refs: [], logs: [], createdAt: M.today(), queueUrl: '', priceUrl: '', terms: '', payMethods: [], openStatus: '' };
+        const cl = { id: uid(), name: '', nickname: nick, tags: [], socials: [], contacts: [], replyTime: '', notes: '', refs: [], refItems: [], logs: [], createdAt: M.today(), queueUrl: '', priceUrl: '', terms: '', payMethods: [], openStatus: '' };
         S.db.clients.push(cl); clientId = cl.id;
       }
-      const target = isNew ? { id: uid(), code: await api.nextCode(), milestones: [], payments: [], revisions: [], refs: [], finals: [], sourceFiles: [], closed: false, createdAt: M.today() } : c;
+      const target = isNew ? { id: uid(), code: await api.nextCode(), milestones: [], payments: [], revisions: [], refs: [], refItems: [], finals: [], sourceFiles: [], closed: false, createdAt: M.today() } : c;
       Object.assign(target, {
-        clientId, title: String(fd.get('title') || '').trim(), type: String(fd.get('type') || '').trim(),
+        clientId, title: String(fd.get('title') || '').trim(), type: String((fd.get('type') === '__c' ? fd.get('typeCustom') : fd.get('type')) || '').trim(),
         startDate: fd.get('startDate') || '', deadline: fd.get('deadline') || '', price: Number(fd.get('price')) || 0,
         freeRevisions: Number(fd.get('freeRevisions')) || 0, spec: fd.get('spec') || '', license: fd.get('license') || '',
         portfolioOk: !!fd.get('portfolioOk'), publicNote: fd.get('publicNote') || '', publicMode: fd.get('publicMode') || 'nick', notes: fd.get('notes') || ''
@@ -1158,7 +1202,7 @@ function formClient(cl) {
       if (!data.name && !data.nickname) { toast('姓名或暱稱至少填一個'); return false; }
       if (data.contacts.length && !data.contacts.some((x) => x.primary)) data.contacts[0].primary = true;
       let target = cl;
-      if (isNew) { target = { id: uid(), refs: [], logs: [], createdAt: M.today() }; S.db.clients.push(target); }
+      if (isNew) { target = { id: uid(), refs: [], refItems: [], logs: [], createdAt: M.today() }; S.db.clients.push(target); }
       Object.assign(target, data);
       S.modal = null;
       await commit(isNew ? '已建立委託人' : '已儲存');
@@ -1337,6 +1381,351 @@ async function switchBook(b, silent) {
   if (!silent) toast(b === 'client' ? '已切換到委託者帳：記錄你委託繪師的進度與付款' : '已切換到繪師帳：記錄你接的委託');
 }
 
+// 參考資料的網址與文字紀錄（圖片以外的參考：Pinterest、雲端資料夾、文字設定）
+const isUrl = (t) => /^https?:\/\/\S+$/i.test(t);
+function refItemsBlock(kind, owner, items) {
+  const rows = (items || []).map((r) => {
+    const body = PV() ? '<span class="sub">（隱私模式中不顯示）</span>'
+      : r.url ? `<a href="#" data-act="ext" data-url="${esc(r.url)}">🔗 ${esc(r.title || r.url.replace(/^https?:\/\/(www\.)?/, ''))} ↗</a>`
+        : `<div style="white-space:pre-wrap">${esc(r.text)}</div>`;
+    return `<div class="refitem">${r.url ? '' : '<span class="ri-ico" aria-hidden="true">📝</span>'}<div style="flex:1;min-width:0;word-break:break-all">${body}${r.url && r.text && !PV() ? `<div class="sub" style="white-space:pre-wrap">${esc(r.text)}</div>` : ''}</div>
+      <button class="btn sm ghost" data-act="delRefItem" data-kind="${kind}" data-owner="${owner}" data-rid="${r.id}" aria-label="刪除這筆參考">×</button></div>`;
+  }).join('');
+  return `<div class="refitems mt">${rows}</div>
+  <form class="row mt" data-form="addRefItem" data-kind="${kind}" data-owner="${owner}" style="flex-wrap:nowrap;align-items:flex-start">
+    <textarea name="v" rows="1" placeholder="貼上網址，或輸入文字說明（例：髮色 #3B2A4F、左眼有痣）" aria-label="新增網址或文字參考" style="flex:1;min-height:38px"></textarea>
+    <button class="btn sm" type="submit">加入</button></form>`;
+}
+const refOwner = (kind, id) => (kind === 'client' ? client(id) : comm(id));
+
+// ───────── 我的資料卡（可分享：圖片＋名片代碼）─────────
+const ROLE_NAME = () => (CLIENT() ? '委託者' : '繪師');
+function myProfile() {
+  const set = S.db.settings;
+  const p = Object.assign(Card.emptyProfile(), set.profile || {});
+  if (!set.profile) { p.nickname = CLIENT() ? '' : (set.artistName || ''); p.types = CLIENT() ? [] : set.commissionTypes.slice(0, 6); }
+  return p;
+}
+function vMyCard() {
+  const p = myProfile(), role = CLIENT() ? 'client' : 'artist';
+  const filled = !!(S.db.settings.profile && p.nickname);
+  return `<div class="between"><h1>我的資料卡</h1><div class="row">
+    <button class="btn" data-act="cardEdit">${filled ? '編輯資料卡' : '開始填寫'}</button>
+    <button class="btn" data-act="cardCopy" ${filled ? '' : 'disabled'}>複製名片代碼</button>
+    <button class="btn pri" data-act="cardImage" ${filled ? '' : 'disabled'}>${WEB() ? '分享／下載圖片' : '下載圖片'}</button></div></div>
+  <p class="hint">做一張${ROLE_NAME()}資料卡傳給對方，${CLIENT() ? '繪師' : '委託人'}一看就知道怎麼聯絡你${CLIENT() ? '' : '、接哪些委託'}。圖片可以貼到社群或私訊；對方如果也用繪師委託帳本，到名冊按「貼上名片代碼」就會直接建立一張資料卡。</p>
+  <div class="warnpanel mt" style="padding:10px 14px;line-height:1.7">資料卡會給別人看，<b>不要放完整銀行帳號、地址或電話</b>。收款方式只寫名稱（例：郵局轉帳、VGen），帳號等成交後再私下給。</div>
+  <div class="mt cardprev-wrap">${filled ? (PV() ? '<div class="panel empty">隱私模式中不顯示資料卡預覽</div>' : `<canvas id="cardprev" aria-label="資料卡預覽" role="img"></canvas>`) : '<div class="panel empty">還沒有填寫資料卡。按「開始填寫」，填好就能產生圖片和名片代碼。</div>'}</div>
+  <section class="panel col mt">
+    <h2>收到別人的名片代碼？</h2>
+    <p class="hint" style="margin:0">到「委託人名冊」按「貼上名片代碼」，或直接在這裡貼上。</p>
+    <form class="row" data-form="cardImport" style="flex-wrap:nowrap"><input type="text" name="code" placeholder="貼上 ALCARD1- 開頭的代碼" aria-label="貼上名片代碼" style="flex:1"><button class="btn sm" type="submit">加入名冊</button></form>
+  </section>`;
+}
+function afterRenderCard() {
+  const cv = $('#cardprev'); if (!cv) return;
+  drawCard(cv, Card.clean(myProfile(), CLIENT() ? 'client' : 'artist'));
+}
+
+// 以 canvas 畫資料卡（1080 寬，高度依內容）
+function drawCard(cv, p) {
+  const W = 1080, PAD = 72, FONT = '"Noto Sans TC","Microsoft JhengHei","PingFang TC","Heiti TC",sans-serif';
+  const ctx0 = cv.getContext('2d');
+  const wrap = (ctx, text, max) => {
+    const lines = [];
+    for (const para of String(text).split('\n')) {
+      let line = '';
+      for (const ch of para) { if (ctx.measureText(line + ch).width > max && line) { lines.push(line); line = ch; } else line += ch; }
+      lines.push(line);
+    }
+    return lines;
+  };
+  const sections = [];
+  if (p.role === 'artist' && p.types.length) sections.push({ h: '接的委託', chips: p.types });
+  if (p.contacts.length) sections.push({ h: '聯繫方式', rows: p.contacts.map((c) => [c.type, c.value]) });
+  if (p.socials.length) sections.push({ h: '社群', rows: p.socials.map((s) => [s.platform, s.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')]) });
+  if (p.role === 'artist') {
+    const links = [p.queueUrl && ['排單', p.queueUrl.replace(/^https?:\/\/(www\.)?/, '')], p.priceUrl && ['價目表', p.priceUrl.replace(/^https?:\/\/(www\.)?/, '')]].filter(Boolean);
+    if (links.length) sections.push({ h: '排單與價目', rows: links });
+    if (p.payMethods.length) sections.push({ h: '收款方式', chips: p.payMethods });
+    if (p.terms) sections.push({ h: '委託須知', text: p.terms, maxLines: 9 });
+  }
+  if (p.replyTime) sections.push({ h: '回覆時段', text: p.replyTime, maxLines: 2 });
+  // 先量高度再畫
+  const layout = (ctx, draw) => {
+    let y = 0;
+    const header = 300;
+    if (draw) {
+      ctx.fillStyle = '#F7F5EF'; ctx.fillRect(0, 0, W, cv.height);
+      ctx.fillStyle = '#1E3F3B'; ctx.fillRect(0, 0, W, header);
+      ctx.fillStyle = '#2A6B60'; ctx.beginPath(); ctx.arc(PAD + 70, 150, 70, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = `700 64px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText([...p.nickname][0] || '?', PAD + 70, 154); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.font = `700 60px ${FONT}`; ctx.fillText(p.nickname.slice(0, 16), PAD + 170, 140);
+      ctx.font = `400 30px ${FONT}`; ctx.fillStyle = '#A9C2BD';
+      ctx.fillText(p.role === 'artist' ? '繪師資料卡' : '委託者資料卡', PAD + 172, 196);
+      if (p.openStatus) {
+        ctx.font = `700 28px ${FONT}`; const tw = ctx.measureText(p.openStatus).width + 44;
+        const x = W - PAD - tw; ctx.fillStyle = p.openStatus === '開放接單' ? '#3FA37A' : '#C9822B';
+        ctx.beginPath(); ctx.roundRect(x, 64, tw, 52, 26); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(p.openStatus, x + 22, 100);
+      }
+    }
+    y = header + 56;
+    if (p.intro) {
+      ctx.font = `400 36px ${FONT}`; const ls = wrap(ctx, p.intro, W - PAD * 2).slice(0, 5);
+      ls.forEach((l, i) => { if (draw) { ctx.fillStyle = '#26302E'; ctx.fillText(l, PAD, y + 36 + i * 54); } });
+      y += ls.length * 54 + 30;
+    }
+    for (const s of sections) {
+      y += 24;
+      if (draw) { ctx.fillStyle = '#2A6B60'; ctx.font = `700 30px ${FONT}`; ctx.fillText(s.h, PAD, y + 30); ctx.fillStyle = '#E2DED3'; ctx.fillRect(PAD, y + 50, W - PAD * 2, 2); }
+      y += 76;
+      if (s.chips) {
+        ctx.font = `400 30px ${FONT}`; let x = PAD;
+        for (const c of s.chips) {
+          const w = ctx.measureText(c).width + 40;
+          if (x + w > W - PAD) { x = PAD; y += 64; }
+          if (draw) { ctx.fillStyle = '#E6EFEC'; ctx.beginPath(); ctx.roundRect(x, y, w, 50, 25); ctx.fill(); ctx.fillStyle = '#1E3F3B'; ctx.fillText(c, x + 20, y + 36); }
+          x += w + 14;
+        }
+        y += 64;
+      }
+      if (s.rows) {
+        for (const [k, v] of s.rows) {
+          ctx.font = `700 30px ${FONT}`;
+          if (draw) { ctx.fillStyle = '#6B746F'; ctx.fillText(k, PAD, y + 34); }
+          ctx.font = `400 32px ${FONT}`;
+          const ls = wrap(ctx, v, W - PAD * 2 - 200).slice(0, 2);
+          ls.forEach((l, i) => { if (draw) { ctx.fillStyle = '#26302E'; ctx.fillText(l, PAD + 200, y + 34 + i * 44); } });
+          y += Math.max(1, ls.length) * 44 + 14;
+        }
+      }
+      if (s.text) {
+        ctx.font = `400 30px ${FONT}`; let ls = wrap(ctx, s.text, W - PAD * 2);
+        if (ls.length > s.maxLines) { ls = ls.slice(0, s.maxLines); ls[ls.length - 1] += '…'; }
+        ls.forEach((l, i) => { if (draw) { ctx.fillStyle = '#26302E'; ctx.fillText(l, PAD, y + 34 + i * 46); } });
+        y += ls.length * 46 + 14;
+      }
+    }
+    y += 40;
+    if (draw) {
+      ctx.fillStyle = '#E2DED3'; ctx.fillRect(0, y, W, 2);
+      ctx.fillStyle = '#8A918D'; ctx.font = `400 24px ${FONT}`;
+      ctx.fillText('繪師委託帳本・用 App 的「貼上名片代碼」可直接加入名冊', PAD, y + 52);
+    }
+    return y + 90;
+  };
+  cv.width = W; cv.height = 10;
+  const h = layout(ctx0, false);
+  cv.height = h;
+  layout(cv.getContext('2d'), true);
+}
+
+function formMyCard() {
+  const p = myProfile(), artist = !CLIENT();
+  const socials = p.socials.length ? p.socials : [{ platform: 'X', url: '' }];
+  const contacts = p.contacts.length ? p.contacts : [{ type: 'Discord', value: '' }];
+  const sRow = (s) => `<div class="subrow"><select name="sp">${optList(PLATFORMS, s.platform)}</select><input type="text" name="su" value="${esc(s.url)}" placeholder="https:// 網址"><button type="button" class="btn sm ghost" data-rmrow aria-label="移除">×</button></div>`;
+  const cRow = (x) => `<div class="subrow"><select name="ct">${optList(CONTACTS, x.type)}</select><input type="text" name="cv" value="${esc(x.value)}" placeholder="帳號、ID 或信箱"><button type="button" class="btn sm ghost" data-rmrow aria-label="移除">×</button></div>`;
+  openModal(`<h2>編輯我的資料卡</h2>
+  <form class="fgrid mt">
+    <label class="f">顯示名稱<input type="text" name="nickname" value="${esc(p.nickname)}" maxlength="60" required></label>
+    ${artist ? `<label class="f">接單狀態<select name="openStatus"><option value="">（不顯示）</option>${optList(['開放接單', '暫停接單', '只接熟客'], p.openStatus)}</select></label>` : '<span></span>'}
+    <label class="f full">一句話介紹<textarea name="intro" maxlength="200" placeholder="${artist ? '例：擅長日系厚塗、VTuber 立繪，接急件' : '例：VTuber，喜歡可愛風格，常委託頭像和表符'}">${esc(p.intro)}</textarea></label>
+    ${artist ? `<label class="f full">接的委託（用逗號分隔）<input type="text" name="types" value="${esc(p.types.join(', '))}"></label>
+    <label class="f">排單頁網址<input type="text" inputmode="url" name="queueUrl" value="${esc(p.queueUrl)}" placeholder="https://"></label>
+    <label class="f">價目表網址<input type="text" inputmode="url" name="priceUrl" value="${esc(p.priceUrl)}" placeholder="https://"></label>
+    <label class="f full">收款方式（只寫名稱，用逗號分隔）<input type="text" name="payMethods" value="${esc(p.payMethods.join(', '))}" placeholder="例：郵局轉帳, LINE Pay, VGen"></label>
+    <label class="f full">委託須知<textarea name="terms" maxlength="1500" placeholder="例：訂金 50%，草稿後不退款；修改 3 次內免費">${esc(p.terms)}</textarea></label>` : ''}
+    <div class="f full"><span>聯繫方式</span><div data-rows="c">${contacts.map(cRow).join('')}</div><button type="button" class="btn sm" data-addrow="c" style="width:max-content">＋ 新增聯繫方式</button></div>
+    <div class="f full"><span>社群連結</span><div data-rows="s">${socials.map(sRow).join('')}</div><button type="button" class="btn sm" data-addrow="s" style="width:max-content">＋ 新增社群</button></div>
+    <label class="f full">回覆時段<input type="text" name="replyTime" value="${esc(p.replyTime)}" placeholder="例：平日晚上 8 點後"></label>
+    <div class="foot full"><button type="button" class="btn" data-act="close">取消</button><button class="btn pri" type="submit">儲存</button></div>
+  </form>`, {
+    onOpen: (root) => root.addEventListener('click', (e) => {
+      const rm = e.target.closest('[data-rmrow]'); if (rm) { rm.parentElement.remove(); return; }
+      const add = e.target.closest('[data-addrow]');
+      if (add) root.querySelector(`[data-rows="${add.dataset.addrow}"]`).insertAdjacentHTML('beforeend', tr(add.dataset.addrow === 's' ? sRow({ platform: 'X', url: '' }) : cRow({ type: 'Discord', value: '' })));
+    }),
+    onSubmit: async (fd) => {
+      const list = (k) => String(fd.get(k) || '').split(/[,，、]/).map((x) => x.trim()).filter(Boolean);
+      const su = fd.getAll('su'), cv = fd.getAll('cv');
+      const fixUrl = (u) => { u = String(u || '').trim(); return !u || /^https?:\/\//i.test(u) ? u : 'https://' + u.replace(/^\/+/, ''); };
+      const raw = {
+        nickname: fd.get('nickname'), intro: fd.get('intro'), replyTime: fd.get('replyTime'),
+        socials: fd.getAll('sp').map((pl, i) => ({ platform: pl, url: fixUrl(su[i]) })),
+        contacts: fd.getAll('ct').map((t, i) => ({ type: t, value: cv[i] })),
+        openStatus: fd.get('openStatus') || '', types: list('types'), queueUrl: fixUrl(fd.get('queueUrl')), priceUrl: fixUrl(fd.get('priceUrl')),
+        payMethods: list('payMethods'), terms: fd.get('terms') || ''
+      };
+      const clean = Card.clean(raw, CLIENT() ? 'client' : 'artist');
+      if (!clean.nickname) { toast('請填顯示名稱'); return false; }
+      if (/\d{10,}/.test([clean.terms || "", ...(clean.payMethods || []), ...clean.contacts.map((c) => c.value)].join(' ').replace(/[\s-]/g, ''))) {
+        if (!confirm('資料卡裡好像有一長串數字（帳號或電話？）。資料卡會給別人看，確定要放嗎？')) return false;
+      }
+      delete clean.role;
+      S.db.settings.profile = clean;
+      S.modal = null;
+      await commit('已儲存資料卡');
+    }
+  });
+}
+
+// 貼上名片代碼 → 加進名冊
+async function importCard(text) {
+  const r = Card.decode(text);
+  if (r.error) { toast(r.error, 4000); return false; }
+  const p = r.profile, { fields, note } = Card.toClientFields(p);
+  const same = S.db.clients.find((cl) => (cl.nickname || cl.name) === p.nickname);
+  const apply = async (target, isNew) => {
+    if (isNew) { target = Object.assign({ id: uid(), name: '', tags: [], refs: [], refItems: [], logs: [], notes: '', createdAt: M.today(), queueUrl: '', priceUrl: '', terms: '', payMethods: [], openStatus: '' }, fields); S.db.clients.push(target); }
+    else {
+      // 更新：對方給的欄位蓋過去，自己的標籤、備註、紀錄保留
+      for (const [k, v] of Object.entries(fields)) { if (k === 'name') continue; if (Array.isArray(v) ? v.length : v) target[k] = v; }
+    }
+    if (note) target.logs.push({ id: uid(), date: M.today(), channel: '名片代碼', text: note });
+    S.modal = null;
+    await commit(isNew ? `已加入「${p.nickname}」` : `已更新「${p.nickname}」的資料卡`);
+    go(`#/client/${target.id}`);
+  };
+  if (!same) { await apply(null, true); return true; }
+  openModal(`<h2>名冊裡已經有「${esc(p.nickname)}」</h2>
+    <p>要用名片代碼更新這張資料卡，還是另外新增一張？更新時，你自己加的標籤、備註和聯繫紀錄都會保留。</p>
+    <div class="foot"><button class="btn" data-act="close">取消</button><button class="btn" data-cardnew>另外新增</button><button class="btn pri" data-cardupd>更新資料卡</button></div>`, {
+    onOpen: (root) => {
+      root.querySelector('[data-cardnew]').addEventListener('click', () => apply(null, true));
+      root.querySelector('[data-cardupd]').addEventListener('click', () => apply(same, false));
+    }
+  });
+  return true;
+}
+function formCardImport() {
+  openModal(`<h2>貼上名片代碼</h2>
+  <form class="col mt" style="gap:10px">
+    <p class="hint" style="margin:0">對方在「我的資料卡」按「複製名片代碼」後傳給你，整段貼上就好（多貼到其他文字也沒關係）。</p>
+    <textarea name="code" rows="4" placeholder="ALCARD1-……" aria-label="名片代碼" required></textarea>
+    <div class="foot"><button type="button" class="btn" data-act="close">取消</button><button class="btn pri" type="submit">加入名冊</button></div>
+  </form>`, { onSubmit: async (fd) => { const ok = await importCard(fd.get('code')); return ok ? undefined : false; } });
+}
+
+// ───────── 共享個案頁與雙方同步 ─────────
+function newCaseKey() {
+  const b = new Uint8Array(18); crypto.getRandomValues(b);
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+const scriptUrl = () => ((S.cloud && S.cloud.effective && S.cloud.effective.url) || S.db.settings.sync.url || '');
+function casePanel(c) {
+  const sh = c.share, fo = c.follow, other = CLIENT() ? '繪師' : '委託人';
+  const thread = (c.thread || []);
+  const convo = `<div class="thread mt" aria-label="對話">${thread.length ? thread.slice(-50).map((m) => `<div class="tmsg ${m.from === 'me' ? 'me' : ''}">
+      <div class="tn">${esc(m.from === 'me' ? '我' : (m.name || other))}・${esc(String(m.at || '').slice(5, 16).replace('T', ' '))}${m.from === 'me' && !m.sent ? '・<span style="color:var(--warn,#B4501A)">等待同步送出</span>' : ''}</div>
+      <div class="tb">${PV() ? '（隱私模式）' : esc(m.text)}</div></div>`).join('') : '<div class="sub">還沒有訊息</div>'}</div>
+    <form class="col mt" data-form="caseMsg" data-id="${c.id}" style="gap:6px"><textarea name="text" rows="2" maxlength="1000" placeholder="傳訊息給${other}（下次同步時送出）" aria-label="傳訊息"></textarea>
+      <div class="row" style="justify-content:flex-end"><button class="btn sm" type="button" data-act="runCloud">立即同步</button><button class="btn sm pri" type="submit">送出</button></div></form>`;
+  if (fo) {
+    const d = c.followData;
+    return `<section class="panel col"><div class="between"><h2>共享個案（雙方同步）</h2><button class="btn sm ghost" data-act="caseUnfollow" data-id="${c.id}">停止追蹤</button></div>
+      ${fo.error ? `<div class="badc">${esc(fo.error)}</div>` : ''}
+      ${d ? `<div class="sub">${esc(d.owner || other)} 分享的進度${d.updated ? `｜更新於 ${esc(d.updated.slice(5, 16).replace('T', ' '))}` : ''}</div>
+        <div><b>${d.closed ? '已結案' : esc(d.stages[d.stage] || '')}</b>${d.deadline ? `｜交稿日 ${esc(d.deadline)}` : ''}</div>
+        ${d.pay ? `<div class="sub">金額 ${esc(d.pay.currency)} ${amt(d.pay.price)}｜已付 ${esc(d.pay.currency)} ${amt(d.pay.paid)}</div>` : ''}
+        ${d.milestones.length ? `<div class="sub">${d.milestones.map((m) => `${m.done ? '✓' : '○'} ${esc(m.name)} ${esc(m.date)}`).join('<br>')}</div>` : ''}
+        ${d.note ? `<div style="white-space:pre-wrap;font-size:14px" class="refitem">${PV() ? '（隱私模式）' : esc(d.note)}</div>` : ''}` : '<div class="sub">同步後就會顯示對方的進度</div>'}
+      <p class="hint" style="margin:0">對方更新進度、交稿日時，這一單會自動跟著改。</p>
+      ${convo}</section>`;
+  }
+  if (!sh || !sh.on) {
+    return `<section class="panel col"><h2>共享個案頁</h2>
+      <p class="hint" style="margin:0">產生一個網址給${other}：可以看進度、交稿日和你寫的備註，也能直接留言，留言會自動進到聯繫紀錄。對方如果也用繪師委託帳本，貼上網址就能雙方同步。</p>
+      ${scriptUrl() ? `<button class="btn" data-act="caseShare" data-id="${c.id}">開啟共享</button>` : `<div class="sub">要先在「<a href="#/sync">Google 表格同步</a>」設定好你的 Apps Script。</div>`}
+      ${thread.length ? convo : ''}</section>`;
+  }
+  const link = Cloud.caseLink(scriptUrl(), sh.key);
+  return `<section class="panel col"><div class="between"><h2>共享個案頁</h2><button class="btn sm ghost" data-act="caseStop" data-id="${c.id}">停止共享</button></div>
+    ${S.db.meta.caseError ? `<div class="badc">${esc(S.db.meta.caseError)}</div>` : ''}
+    <div class="row" style="flex-wrap:nowrap"><input type="text" readonly value="${esc(link)}" aria-label="共享網址" style="flex:1;font-size:12px"><button class="btn sm" data-act="caseCopy" data-id="${c.id}">複製</button></div>
+    <label class="f">給對方看的備註<textarea data-chg="caseNote" data-id="${c.id}" rows="3" placeholder="例：草稿預計週五給你看；顏色有想改的可以直接留言">${esc(sh.note || '')}</textarea></label>
+    <label class="chk"><input type="checkbox" data-chg="casePay" data-id="${c.id}" ${sh.showPay ? 'checked' : ''}> 顯示金額與已付款</label>
+    <p class="hint" style="margin:0">對方只看得到進度、交稿日、階段日期、這裡的備註和對話。內容在同步時更新。</p>
+    ${convo}</section>`;
+}
+function formFollowCase() {
+  openModal(`<h2>加入對方分享的個案</h2>
+  <form class="col mt" style="gap:10px">
+    <p class="hint" style="margin:0">對方在繪師委託帳本開啟「共享個案頁」後會給你一個網址。貼上後，這一單的進度、交稿日和對話會自動同步。</p>
+    <textarea name="link" rows="3" placeholder="https://script.google.com/macros/s/……/exec?c=……" aria-label="共享網址" required></textarea>
+    <div class="foot"><button type="button" class="btn" data-act="close">取消</button><button class="btn pri" type="submit">加入</button></div>
+  </form>`, {
+    onSubmit: async (fd) => {
+      const lk = Cloud.parseCaseLink(fd.get('link'));
+      if (!lk) { toast('網址不正確，請確認是對方給的共享個案網址（含 ?c=）', 4000); return false; }
+      const dup = S.db.commissions.find((x) => x.follow && x.follow.key === lk.key);
+      if (dup) { S.modal = null; go(`#/c/${dup.id}`); toast('這一單已經在追蹤了'); return; }
+      const c = { id: uid(), code: await api.nextCode(), clientId: '', title: '共享個案（同步中…）', milestones: [], payments: [], revisions: [], refs: [], refItems: [], finals: [], sourceFiles: [], thread: [], closed: false, createdAt: M.today(), stageId: S.db.settings.stages[0].id, follow: { url: lk.url, key: lk.key } };
+      S.db.commissions.push(c); touch(c);
+      S.modal = null;
+      await commit('已加入，正在同步…');
+      go(`#/c/${c.id}`);
+      await A.runCloud();
+      // 第一次同步後補上標題與委託人（找不到就建立一張資料卡）
+      S.db = await api.getDb();
+      const c2 = comm(c.id);
+      if (c2 && c2.followData) {
+        const d = c2.followData;
+        if (c2.title.startsWith('共享個案')) c2.title = d.title || c2.title;
+        if (!c2.clientId && d.owner) {
+          let cl = S.db.clients.find((x) => (x.nickname || x.name) === d.owner);
+          if (!cl) { cl = { id: uid(), name: '', nickname: d.owner, tags: [], socials: [], contacts: [], replyTime: '', notes: '', refs: [], refItems: [], logs: [], createdAt: M.today(), queueUrl: '', priceUrl: '', terms: '', payMethods: [], openStatus: '' }; S.db.clients.push(cl); }
+          c2.clientId = cl.id;
+        }
+        touch(c2); await commit();
+      } else render();
+    }
+  });
+}
+
+// ───────── 泡泡標籤編輯（委託類型、款項來源）─────────
+const CHIP_LISTS = {
+  commissionTypes: { rename: (from, to) => S.db.commissions.forEach((c) => { if (c.type === from) { c.type = to; touch(c); } }) },
+  paySources: { rename: (from, to) => S.db.commissions.forEach((c) => { let hit = false; c.payments.forEach((p) => { if (p.source === from) { p.source = to; hit = true; } }); if (hit) touch(c); }) }
+};
+function chipEditor(key, list, addLabel) {
+  return `<div class="chipedit" data-chipkey="${key}">${list.map((t, i) => `<span class="tchip tagx ce"><button type="button" data-act="ceEdit" data-key="${key}" data-i="${i}" title="點一下改名">${esc(t)}</button><button type="button" class="tdel" data-act="ceDel" data-key="${key}" data-i="${i}" aria-label="刪除">×</button></span>`).join('')}
+    <button type="button" class="tchip ce-add" data-act="ceAdd" data-key="${key}" aria-label="${addLabel}" title="${addLabel}">＋</button></div>`;
+}
+// 把泡泡換成輸入框；Enter 或點別處就儲存，Esc 取消
+function chipInput(anchor, key, i) {
+  const list = S.db.settings[key];
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.className = 'ce-input'; inp.value = i >= 0 ? list[i] : '';
+  inp.setAttribute('aria-label', i >= 0 ? '修改名稱' : '新增名稱');
+  anchor.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true;
+    const v = inp.value.trim();
+    if (!save) { render(); return; }
+    if (i >= 0) {
+      const old = list[i];
+      if (!v) { list.splice(i, 1); await commit(`已刪除「${old}」`); return; }
+      if (v === old) { render(); return; }
+      if (list.includes(v)) { toast(`「${v}」已經有了`); render(); return; }
+      list[i] = v; CHIP_LISTS[key].rename(old, v);
+      await commit(`已改成「${v}」`); return;
+    }
+    if (!v) { render(); return; }
+    if (list.includes(v)) { toast(`「${v}」已經有了`); render(); return; }
+    list.push(v); await commit(`已新增「${v}」`);
+    // 連續新增：再開一個輸入框
+    const add = $(`[data-chipkey="${key}"] .ce-add`); if (add && save === 'enter') chipInput(add, key, -1);
+  };
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish('enter'); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+  });
+  inp.addEventListener('blur', () => finish(true));
+}
+
 const A = {
   close: () => closeModal(),
   book: (el) => switchBook(el.dataset.book),
@@ -1344,8 +1733,9 @@ const A = {
     S.cloudRunning = true; render();
     const r = await api.runCloud();
     S.cloudRunning = false; S.db = await api.getDb(); render();
-    const bad = Object.values(r || {}).find((x) => x && !x.ok);
-    toast(bad ? `同步失敗：${bad.error}` : '電腦與手機已同步', 5000);
+    const rs = Object.values(r || {}).filter((x) => x && !(x.ok === false && /還沒有設定同步/.test(x.error || '')));
+    const bad = rs.find((x) => !x.ok), inc = rs.reduce((a, x) => a + (x.incoming || 0), 0);
+    toast(bad ? `同步失敗：${bad.error}` : !rs.length ? '還沒有設定同步' : `${rs.every((x) => x.casesOnly) ? '共享個案已更新' : '電腦與手機已同步'}${inc ? `，收到 ${inc} 則新訊息` : ''}`, 5000);
   },
   copyCode: async () => { await api.copyText((S.cloud || {}).code || ''); toast('已複製連線代碼，到另一台裝置的「Google 表格同步 › 電腦與手機同步」貼上'); },
   openWidget: () => api.openWidget(),
@@ -1354,6 +1744,34 @@ const A = {
   editC: (el) => formCommission(comm(el.dataset.id)),
   openC: (el) => go(`#/c/${el.dataset.id}`),
   openClient: (el) => go(`#/client/${el.dataset.id}`),
+  zoom: (el) => { try { localStorage.setItem('al-zoom', el.dataset.v); } catch (e) { /* 忽略 */ } applyZoom(); render(); },
+  cardEdit: () => formMyCard(),
+  caseShare: async (el) => { const c = comm(el.dataset.id); c.share = Object.assign({ key: newCaseKey(), note: '', showPay: false }, c.share || {}, { on: true }); touch(c); await commit('已開啟共享，同步後網址就能用'); A.runCloud(); },
+  caseStop: async (el) => { const c = comm(el.dataset.id); if (!confirm('停止共享後，原本的網址就打不開了。確定嗎？')) return; c.share.on = false; touch(c); await commit('已停止共享'); A.runCloud(); },
+  caseCopy: async (el) => { const c = comm(el.dataset.id); await api.copyText(Cloud.caseLink(scriptUrl(), c.share.key)); toast('已複製共享網址'); },
+  caseUnfollow: async (el) => { const c = comm(el.dataset.id); if (!confirm('停止追蹤後，這一單會留在帳本裡，但不會再跟對方同步。確定嗎？')) return; delete c.follow; touch(c); await commit('已停止追蹤'); },
+  followCase: () => formFollowCase(),
+  cardPaste: () => formCardImport(),
+  cardCopy: async () => {
+    const p = myProfile();
+    await api.copyText(`${p.nickname} 的${ROLE_NAME()}資料卡（繪師委託帳本名片代碼，貼到 App 就能加入名冊）\n${Card.encode(p, CLIENT() ? 'client' : 'artist')}`);
+    toast('已複製名片代碼，貼給對方就好');
+  },
+  cardImage: async () => {
+    const cv = document.createElement('canvas');
+    drawCard(cv, Card.clean(myProfile(), CLIENT() ? 'client' : 'artist'));
+    const r = await api.saveImage(`${myProfile().nickname || '我'}-資料卡.png`, cv.toDataURL('image/png'));
+    if (r && r.ok) toast(r.shared ? '已開啟分享' : '已存好資料卡圖片');
+  },
+  delRefItem: async (el) => {
+    const o = refOwner(el.dataset.kind, el.dataset.owner); if (!o) return;
+    o.refItems = (o.refItems || []).filter((r) => r.id !== el.dataset.rid); if (el.dataset.kind === 'comm') touch(o);
+    await commit('已刪除');
+  },
+  ceEdit: (el) => chipInput(el.closest('.ce'), el.dataset.key, Number(el.dataset.i)),
+  ceAdd: (el) => chipInput(el, el.dataset.key, -1),
+  ceDel: async (el) => { const list = S.db.settings[el.dataset.key]; const [old] = list.splice(Number(el.dataset.i), 1); await commit(`已刪除「${old}」`); },
+  gcols: (el) => { try { localStorage.setItem('al-gcols', el.dataset.v); } catch (e) { /* 忽略 */ } render(); },
   theme: (el) => { try { localStorage.setItem('al-theme', el.dataset.v); } catch (e) { /* 忽略 */ } applyTheme(); render(); },
   ctag: (el) => { S.view.ctag = S.view.ctag === el.dataset.tag ? '' : el.dataset.tag; render(); },
   ctagGo: (el) => { S.view.ctag = el.dataset.tag; S.view.q = ''; go('#/clients'); },
@@ -1559,6 +1977,8 @@ const A = {
 
 // 欄位變更
 const C = {
+  caseNote: async (el) => { const c = comm(el.dataset.id); c.share.note = el.value.slice(0, 3000); touch(c); await commit('已儲存，同步後對方就會看到'); },
+  casePay: async (el) => { const c = comm(el.dataset.id); c.share.showPay = el.checked; touch(c); await commit(); },
   tpl: async (el) => {
     const t = S.db.settings.priceTemplates.find((x) => x.id === el.dataset.id); if (!t) return;
     const f = el.dataset.f;
@@ -1621,6 +2041,10 @@ const C = {
   reminderDays: async (el) => { S.db.settings.reminderDays = el.value.split(/[,，\s]+/).map(Number).filter((x) => Number.isFinite(x) && x >= 0); await commit('已儲存'); },
   freeRevisions: async (el) => { S.db.settings.freeRevisions = Math.max(0, Number(el.value) || 0); await commit('已儲存'); },
   commissionTypes: async (el) => { S.db.settings.commissionTypes = el.value.split(/[,，、]/).map((x) => x.trim()).filter(Boolean); await commit('已儲存'); },
+  currencySel: async (el) => {
+    if (el.value === '__c') { S.view.customCur = true; render(); const i = $('[data-chg=currency]'); if (i) { i.value = ''; i.focus(); } return; }
+    S.db.settings.currency = el.value; await commit('已儲存');
+  },
   currency: async (el) => { S.db.settings.currency = el.value.trim() || 'NT$'; await commit('已儲存'); },
   widgetOnTop: async (el) => { await api.setOnTop(el.checked); S.db.settings.widgetOnTop = el.checked; },
   autostart: async (el) => { await api.setAutostart(el.checked); S.db.settings.autostart = el.checked; toast(el.checked ? '開機會自動開啟小工具' : '已取消開機啟動'); },
@@ -1629,14 +2053,21 @@ const C = {
 
 // ───────── 事件綁定 ─────────
 document.addEventListener('click', (e) => {
-  if (e.target.dataset && e.target.dataset.bg && S.modal) { closeModal(); return; }
+  if (e.target.dataset && e.target.dataset.bg && S.modal) {
+    // 有表單的視窗點外面不關閉，避免打到一半的內容不見；要關請按「取消」
+    if (S.modal.hasForm) { const m = $('#modal-root .modal'); if (m) { m.classList.remove('nudge'); void m.offsetWidth; m.classList.add('nudge'); } return; }
+    closeModal(); return;
+  }
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const fn = A[el.dataset.act];
   if (fn) { e.preventDefault(); fn(el, e); }
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && S.modal) closeModal();
+  if (e.key === 'Escape' && S.modal) {
+    if (S.modal.dirty && !(S.modal.escAt && Date.now() - S.modal.escAt < 2500)) { S.modal.escAt = Date.now(); toast('再按一次 Esc 會放棄這次輸入的內容'); return; }
+    closeModal();
+  }
   if (S.modal && S.modal.viewer && e.key === 'ArrowLeft') S.modal.viewer.prev();
   if (S.modal && S.modal.viewer && e.key === 'ArrowRight') S.modal.viewer.next();
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.drop-zone')) { e.preventDefault(); e.target.click(); }
@@ -1687,6 +2118,22 @@ document.addEventListener('submit', async (e) => {
     if (!add.length) return;
     cl.tags.push(...add); await commit('已加上標籤');
     const ni = document.querySelector('[data-form="tagAdd"] input'); if (ni) ni.focus();
+  }
+  if (f.dataset.form === 'caseMsg') {
+    const c = comm(f.dataset.id); const text = String(fd.get('text') || '').trim(); if (!c || !text) return;
+    (c.thread = c.thread || []).push({ id: 'm' + uid().replace(/-/g, '').slice(0, 20), from: 'me', name: '', text: text.slice(0, 1000), at: new Date().toISOString(), sent: false });
+    touch(c); await commit(); A.runCloud(); return;
+  }
+  if (f.dataset.form === 'cardImport') { await importCard(fd.get('code')); return; }
+  if (f.dataset.form === 'addRefItem') {
+    const o = refOwner(f.dataset.kind, f.dataset.owner); if (!o) return;
+    const v = String(fd.get('v') || '').trim(); if (!v) return;
+    // 第一行是網址就存成連結，後面的字當說明；否則整段存成文字
+    const [first, ...rest] = v.split('\n');
+    const item = isUrl(first.trim()) ? { id: uid(), url: first.trim(), text: rest.join('\n').trim() } : { id: uid(), url: '', text: v };
+    item.addedAt = new Date().toISOString();
+    (o.refItems = o.refItems || []).push(item); if (f.dataset.kind === 'comm') touch(o);
+    await commit(item.url ? '已加入網址' : '已加入文字');
   }
   if (f.dataset.form === 'addLog') {
     const text = String(fd.get('text') || '').trim(); if (!text) return;

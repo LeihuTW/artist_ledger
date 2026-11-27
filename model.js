@@ -33,7 +33,6 @@ const CLIENT_PAY_SOURCES = ['直接轉帳', 'Skeb', 'VGen', 'Pixiv Request', '�
 
 // 委託者模式的用詞：畫面上的固定文字依序替換（長的詞放前面）
 const CLIENT_TERMS = [
-  ['繪師委託帳本 <small>繪師版</small>', '繪師委託帳本 <small>委託者版</small>'],
   ['委託人同意完稿後放作品集', '同意繪師把完稿放作品集'], ['委託人已同意', '已同意'],
   ['註解／委託人回饋（這一版改了什麼）', '註解／我的回饋（這一版要改什麼）'], ['（交付給委託人的版本）', '（繪師交給你的完稿）'],
   ['委託人的角色設定圖在', '這位繪師的參考資料在'], ['修改過程圖面紀錄', '繪師傳來的圖（修改過程）'],
@@ -82,6 +81,7 @@ function defaultSettings(book) {
     autostart: false,
     widgetOnTop: true,
     artistName: '',
+    profile: null,           // 我的資料卡（可分享給別人）
     sync: {
       url: '',
       token: '',
@@ -149,11 +149,11 @@ function normalizeDb(db, bookHint) {
 function normClient(c) {
   return Object.assign({
     id: '', name: '', nickname: '', tags: [], socials: [], contacts: [], replyTime: '', notes: '',
-    refs: [], logs: [], createdAt: today(),
+    refs: [], refItems: [], logs: [], createdAt: today(),
     // 委託者模式的繪師資料卡：排單頁、價目表、委託須知、繪師的收款方式、接單狀態
     queueUrl: '', priceUrl: '', terms: '', payMethods: [], openStatus: ''
   }, c, {
-    tags: arr(c.tags), socials: arr(c.socials), contacts: arr(c.contacts), refs: arr(c.refs), logs: arr(c.logs), payMethods: arr(c.payMethods)
+    tags: arr(c.tags), socials: arr(c.socials), contacts: arr(c.contacts), refs: arr(c.refs), refItems: arr(c.refItems), logs: arr(c.logs), payMethods: arr(c.payMethods)
   });
 }
 
@@ -161,7 +161,7 @@ function normCommission(c, s) {
   return Object.assign({
     id: '', code: '', clientId: '', title: '', type: '', stageId: s.stages[0].id,
     startDate: today(), deadline: '', milestones: [], price: 0, payments: [], revisions: [],
-    freeRevisions: s.freeRevisions, refs: [], finals: [], sourceFiles: [],
+    freeRevisions: s.freeRevisions, refs: [], refItems: [], finals: [], sourceFiles: [],
     spec: '', license: '', portfolioOk: false, publicNote: '', notes: '', closed: false, closedAt: '',
     publicMode: 'nick', // nick 顯示暱稱／anon 顯示為「保密委託」／hidden 不放上公開排單
     deliveredAt: '',    // 進入「已交付」階段的日期（尾款提醒用）
@@ -171,7 +171,7 @@ function normCommission(c, s) {
     milestones: arr(c.milestones),
     payments: arr(c.payments).map((p) => Object.assign({ source: '', account: '', payer: '', note: '' }, p)),
     revisions: arr(c.revisions),
-    refs: arr(c.refs), finals: arr(c.finals), sourceFiles: arr(c.sourceFiles)
+    refs: arr(c.refs), refItems: arr(c.refItems), finals: arr(c.finals), sourceFiles: arr(c.sourceFiles), thread: arr(c.thread)
   });
 }
 
@@ -323,12 +323,15 @@ function cmpVersion(a, b) {
   return 0;
 }
 
+// 編號格式：C-年-月-流水號，例如 C-2026-11-01（每個月從 01 重新計算）
 function nextCode(db, now) {
-  const y = (now || new Date()).getFullYear();
-  const used = db.commissions.map((c) => c.code).filter((x) => x && x.startsWith(`C-${y}-`)).map((x) => Number(x.split('-')[2]) || 0);
-  const n = Math.max(0, ...used, db.meta.seq[y] || 0) + 1;
-  db.meta.seq[y] = n;
-  return `C-${y}-${String(n).padStart(3, '0')}`;
+  const d = now || new Date();
+  const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const pre = `C-${ym}-`;
+  const used = db.commissions.map((c) => c.code).filter((x) => x && x.startsWith(pre)).map((x) => Number(x.slice(pre.length)) || 0);
+  const n = Math.max(0, ...used, db.meta.seq[ym] || 0) + 1;
+  db.meta.seq[ym] = n;
+  return `${pre}${String(n).padStart(2, '0')}`;
 }
 
 // 所有被資料引用到的附件相對路徑（備份用）

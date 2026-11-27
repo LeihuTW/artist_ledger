@@ -14,18 +14,20 @@
 <body>
 <div id="app">
   <nav id="side" aria-label="主選單">
-    <div class="brand">繪師委託帳本 <small>繪師版</small></div>
+    <div class="brand">繪師委託帳本</div>
     <div class="seg dark" role="group" aria-label="切換帳本">
       <button type="button" data-act="book" data-book="artist" aria-pressed="true" class="on">繪師</button>
       <button type="button" data-act="book" data-book="client" aria-pressed="false">委託者</button>
     </div>
     <a href="#/overview" data-nav="overview">委託總覽</a>
     <a href="#/clients" data-nav="clients">委託人名冊</a>
+    <a href="#/mycard" data-nav="mycard">我的資料卡</a>
     <a href="#/payments" data-nav="payments">收款紀錄</a>
     <a href="#/calendar" data-nav="calendar">死線行事曆</a>
     <a href="#/gallery" data-nav="gallery">作品圖庫</a>
     <a href="#/sync" data-nav="sync">Google 表格同步</a>
     <a href="#/settings" data-nav="settings">設定與備份</a>
+    <div class="side-gap"></div>
     <button class="side-btn" data-act="openWidget">開啟桌面小工具</button>
     <button class="side-btn priv" id="privacy-btn" data-act="togglePrivacy" aria-pressed="false" title="直播或截圖時，把名字、金額、圖片打碼">隱私模式：關</button>
     <div id="side-status" class="side-status"></div>
@@ -42,6 +44,7 @@
 <div id="modal-root"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="model.js"></script>
+<script src="card.js"></script>
 <script src="sheets.js"></script>
 <script src="cloud.js"></script>
 <script src="publicpage.js"></script>

@@ -5,7 +5,7 @@
 (function () {
 'use strict';
 const M = window.Model, Sh = window.Sheets, Cloud = window.Cloud;
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const DBNAME = 'artist-ledger';
 
 // ───────── IndexedDB ─────────
@@ -107,9 +107,15 @@ function cloudInfo() {
   const eff = cloudConf();
   return { url: st.config.cloud.url, token: st.config.cloud.token, auto: st.config.cloud.auto, effective: eff, code: eff.url && eff.token ? Cloud.makeCode(eff.url, eff.token) : '' };
 }
+async function casePost(url, body) {
+  if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(String(url || ''))) throw new Error('共享個案網址不正確');
+  try { return await postScript(url, body); } catch (e) { throw new Error('對方的共享個案網址沒有回應，可能已經停止分享'); }
+}
+const myName = (db) => (db.settings.profile && db.settings.profile.nickname) || db.settings.artistName || '';
+const anyCaseWork = () => M.BOOKS.some((b) => Cloud.hasCaseWork(st.dbs[b]));
 async function runCloud(book) {
   const conf = cloudConf();
-  if (!conf.url) return { ok: false, error: '還沒有設定同步' };
+  if (!conf.url && !Cloud.hasCaseWork(st.dbs[book])) return { ok: false, error: '還沒有設定同步' };
   if (st.cloudRunning[book]) return { ok: false, error: '同步進行中' };
   st.cloudRunning[book] = true;
   emit('cloud', { book, running: true });
@@ -117,8 +123,9 @@ async function runCloud(book) {
   const db = st.dbs[book];
   try {
     const call = async (b) => { const j = await postScript(conf.url, Object.assign({ token: conf.token }, b)); if (j.ok === false && j.error) throw new Error(j.error); return j; };
-    const r = await Cloud.syncBook(db, call);
-    st.dbs[book] = r.db; result = r.result;
+    const cr = await Cloud.syncCases(db, { call: conf.url ? call : null, post: casePost, myName: myName(db) });
+    if (conf.url) { const r = await Cloud.syncBook(db, call); st.dbs[book] = r.db; result = Object.assign(r.result, { incoming: cr.incoming }); }
+    else result = { ok: true, casesOnly: true, incoming: cr.incoming };
   } catch (e) {
     db.meta.cloud = Object.assign({}, db.meta.cloud || {}, { error: e.message, errorAt: new Date().toISOString() });
     result = { ok: false, error: e.message };
@@ -131,16 +138,17 @@ async function runCloud(book) {
 }
 let cloudTimer = null;
 function scheduleCloud() {
-  if (!cloudConf().url || !st.config.cloud.auto) return;
+  if (!(cloudConf().url || anyCaseWork()) || !st.config.cloud.auto) return;
   clearTimeout(cloudTimer);
   cloudTimer = setTimeout(() => { runCloud(st.config.book); }, 15000);
 }
 async function runCloudAll() { const out = {}; for (const b of M.BOOKS) out[b] = await runCloud(b); return out; }
 ready.then(() => {
-  setTimeout(() => { if (cloudConf().url && st.config.cloud.auto) runCloudAll(); }, 3000);
-  setInterval(() => { if (cloudConf().url && st.config.cloud.auto && document.visibilityState === 'visible') runCloudAll(); }, 5 * 60 * 1000);
+  const on = () => (cloudConf().url || anyCaseWork()) && st.config.cloud.auto;
+  setTimeout(() => { if (on()) runCloudAll(); }, 3000);
+  setInterval(() => { if (on() && document.visibilityState === 'visible') runCloudAll(); }, 5 * 60 * 1000);
   // 從背景切回來時拉一次最新資料
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && cloudConf().url && st.config.cloud.auto) runCloud(st.config.book); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && on()) runCloud(st.config.book); });
 });
 
 async function runSheets() {
@@ -227,6 +235,12 @@ window.api = {
   },
   onCloudState: (fn) => st.listeners.cloud.push(fn),
 
+  setZoom: (f) => {
+    // 網頁版用 CSS zoom；vh 不會跟著縮放，所以另外給 --vh 讓對話框高度正確
+    const n = Number(f), el = document.documentElement, on = n && n !== 1;
+    el.style.zoom = on ? String(n) : '';
+    if (on) el.style.setProperty('--vh', `calc(1vh / ${n})`); else el.style.removeProperty('--vh');
+  },
   fileUrl: (rel) => st.urls.get(rel) || 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
   pathsOf: (files) => Array.from(files || []),
   importFiles: async (files, kind) => { const out = []; for (const f of (files || []).slice(0, 200)) if (f instanceof Blob) out.push(await importOne(f, kind)); return out; },
@@ -249,7 +263,7 @@ window.api = {
   setAutostart: async (on) => !!on,
   info: async () => { await ready; return { version: VERSION, dataDir: '（這支手機的瀏覽器）', platform: 'web', portable: false, hasBuiltinUpdateUrl: false, web: true }; },
   checkUpdate: async () => ({ ok: true, newer: false, current: VERSION }),
-  setPrivacy: async (on) => { cur().settings.privacyMode = !!on; await saveDb(cur()); return !!on; },
+  setPrivacy: async (on) => { for (const b of M.BOOKS) { st.dbs[b].settings.privacyMode = !!on; await saveDb(st.dbs[b]); } return !!on; },
   openUpdatePage: async () => false,
   exportDiagnostics: async () => {
     const db = cur();
@@ -261,6 +275,16 @@ window.api = {
   createShortcuts: async () => ({ ok: false, error: '手機版請用瀏覽器選單的「加到主畫面」' }),
   openExternal: async (url) => { try { const u = new URL(url); if (['https:', 'http:', 'mailto:'].includes(u.protocol)) window.open(u.href, '_blank', 'noopener'); } catch (e) { /* 忽略 */ } return true; },
   openDataDir: async () => true,
+  saveImage: async (name, dataUrl) => {
+    const bin = atob(String(dataUrl).split(',')[1] || '');
+    const blob = new Blob([Uint8Array.from(bin, (c) => c.charCodeAt(0))], { type: 'image/png' });
+    const file = new File([blob], name, { type: 'image/png' });
+    // 手機上優先用系統分享（可以直接傳到 LINE、Discord、IG）
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return { ok: true, shared: true }; } catch (e) { if (e && e.name === 'AbortError') return { ok: false }; }
+    }
+    download(name, blob); return { ok: true };
+  },
   copyText: async (t) => { try { await navigator.clipboard.writeText(String(t || '')); } catch (e) { prompt('請複製：', String(t || '')); } return true; },
   changeDataDir: async () => ({ ok: false }),
 
