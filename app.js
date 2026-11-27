@@ -125,6 +125,13 @@ function render() {
 }
 
 function quickRoutes(r) {
+  // 手機相機掃電腦的 QR code 會開 #/link/連線代碼：先把代碼從網址列拿掉，再問要不要連線
+  if (r.name === 'link') {
+    const code = findLinkCode(r.id);
+    history.replaceState(null, '', '#/sync'); render();
+    if (code) confirmLink(code); else toast('連線代碼不完整，請重新掃描', 4000);
+    return;
+  }
   if (r.name === 'new') { history.replaceState(null, '', '#/overview'); render(); formCommission(); }
   if (r.name === 'quickpay') { history.replaceState(null, '', '#/overview'); render(); pickCommission('記一筆收款', (c) => formPayment(c)); }
   if (r.name === 'quickrev') { history.replaceState(null, '', '#/overview'); render(); pickCommission('上傳修改圖', (c) => { go(`#/c/${c.id}`); pickInto('rev', c.id); }); }
@@ -812,6 +819,16 @@ function vSync() {
   </div>`;
 }
 
+// 手機掉了怎麼辦（連線代碼外流時也照這個做）
+const LOST_HELP = `<details class="casehelp"><summary>手機掉了怎麼辦？</summary>
+  <ol>
+    <li>在電腦版「Google 表格同步」頁，同步密碼旁按「重新產生」。</li>
+    <li>按「複製同步腳本」，回到 Apps Script 全部刪掉後貼上。</li>
+    <li>在 Apps Script 按「部署 › 管理部署作業」，按鉛筆圖示「編輯」，版本選「新版本」，按「部署」（網址不會變）。</li>
+    <li>其他還要用的裝置，重新掃 QR code 或輸入新的連線代碼。</li>
+  </ol>
+  <p>完成後，掉的那支手機就再也不能讀取或修改你的帳本。代碼不小心傳出去或被截圖時，也照這個步驟換掉。</p>
+</details>`;
 // 電腦與手機同步：兩本帳一起同步到使用者自己的 Google 試算表
 function cloudPanel() {
   const c = S.cloud || {}, eff = c.effective || {};
@@ -820,10 +837,30 @@ function cloudPanel() {
   return `<section class="panel mt col">
     <div class="between"><h2>電腦與手機同步</h2><button class="btn pri" data-act="runCloud" ${eff.url && !S.cloudRunning ? '' : 'disabled'}>立即同步</button></div>
     <p class="hint" style="margin:0">繪師帳和委託者帳會一起存到你自己的 Google 試算表（隱藏的工作表），電腦和手機打開時會自動拉取、修改後約 15 秒自動上傳。圖片檔案不會同步，只同步文字資料。</p>
-    <div class="sub">${eff.url ? status : '還沒設定：先完成下方的「第一次設定步驟」，或在手機版貼上電腦給的連線代碼。'}</div>
-    ${eff.url && eff.token ? `<div class="f"><span>連線代碼（給另一台裝置用，請不要公開）</span>
-      <div class="row" style="flex-wrap:nowrap"><input type="text" readonly class="mono" value="${esc(c.code || '')}" aria-label="連線代碼"><button class="btn sm" data-act="copyCode">複製</button></div></div>` : ''}
-    <form class="row" data-form="cloudCode" style="flex-wrap:nowrap"><input type="text" name="code" placeholder="貼上另一台裝置的連線代碼（AL1- 開頭）" aria-label="貼上連線代碼"><button class="btn sm" type="submit">連線</button></form>
+    <div class="sub">${eff.url ? status : '還沒設定：先完成下方的「第一次設定步驟」；手機版可以直接按「掃描 QR code 連線」掃電腦上的 QR code。'}</div>
+    ${eff.url && eff.token && !WEB() ? `<div class="qrbox col">
+      <b>連線手機：用手機掃 QR code</b>
+      ${S.qrShow && !PV() ? `<div class="row" style="align-items:flex-start;gap:18px">
+        <div class="qr" aria-label="連線 QR code">${linkQr(c.code)}</div>
+        <div class="col" style="flex:1;min-width:240px;gap:10px">
+          <ol class="hint" style="margin:0;padding-left:18px;line-height:1.8">
+            <li>用手機相機掃左邊的 QR code，點出現的網址。</li>
+            <li>手機會打開手機版，按「連線」就完成了，之後兩邊自動同步。</li>
+            <li><b>iPhone 已經把手機版加到主畫面的話</b>：請打開主畫面的 App，到「Google 表格同步」按「掃描 QR code 連線」，資料才會存在那個 App 裡。</li>
+          </ol>
+          <div class="f"><span>連線代碼（掃不到 QR code 時的備用方案）</span>
+            <div class="row" style="flex-wrap:nowrap"><input type="text" readonly class="mono" value="${esc(c.code || '')}" aria-label="連線代碼"><button class="btn sm" data-act="copyCode">複製</button></div>
+            <span class="keywarn">這組代碼等於你的帳本鑰匙，請不要用 LINE 或 Email 傳送，也不要截圖。</span></div>
+        </div></div>
+        <div class="sub">2 分鐘後會自動隱藏。<button class="btn sm" data-act="qrHide">現在隱藏</button></div>`
+      : PV() ? '<div class="sub">隱私模式中不顯示 QR code 和連線代碼（避免直播或截圖外流）</div>' : `<button class="btn" data-act="qrShow" style="width:max-content">顯示 QR code 與連線代碼</button>`}
+      ${LOST_HELP}
+    </div>` : ''}
+    ${WEB() ? `<div class="row"><button class="btn pri" data-act="qrScan">掃描 QR code 連線</button><span class="hint" style="margin:0">掃電腦版「Google 表格同步 › 電腦與手機同步」裡的 QR code</span></div>` : ''}
+    ${WEB() && eff.url && eff.token ? `<details class="f"><summary class="sub">這支手機的連線代碼（備用）</summary>
+      <div class="row mt" style="flex-wrap:nowrap"><input type="text" readonly class="mono" value="${PV() ? '（隱私模式中不顯示）' : esc(c.code || '')}" aria-label="連線代碼"><button class="btn sm" data-act="copyCode" ${PV() ? 'disabled' : ''}>複製</button></div>
+      <span class="keywarn">這組代碼等於你的帳本鑰匙，請不要用 LINE 或 Email 傳送，也不要截圖。</span></details>${LOST_HELP}` : ''}
+    <form class="row" data-form="cloudCode" style="flex-wrap:nowrap"><input type="text" name="code" placeholder="或貼上另一台裝置的連線代碼（AL1- 開頭）" aria-label="貼上連線代碼"><button class="btn sm" type="submit">連線</button></form>
     <label class="chk"><input type="checkbox" data-chg="cloudAuto" ${c.auto !== false ? 'checked' : ''}> 自動同步</label>
   </section>`;
 }
@@ -1614,6 +1651,17 @@ function newCaseKey() {
   return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 const scriptUrl = () => ((S.cloud && S.cloud.effective && S.cloud.effective.url) || S.db.settings.sync.url || '');
+const CASE_HELP = (other) => `<details class="casehelp"><summary>共享個案怎麼用？</summary>
+  <ol>
+    <li>按「開啟共享」，同步完成後按「複製」，把網址傳給${other}。</li>
+    <li><b>${other}只用瀏覽器</b>：打開網址就能看進度、交稿日、階段日期和你寫的備註，也能在網頁最下面留言。留言會在你下次同步時出現在下方的對話裡，也會記進聯繫紀錄。</li>
+    <li><b>${other}也用繪師委託帳本</b>：請他在「委託總覽」按「加入共享個案」貼上網址。之後你改的進度、交稿日會自動同步到他的帳本，兩邊在這裡傳的訊息都會互相收到。他不需要設定同步。</li>
+  </ol>
+  <p><b>會被看到</b>：委託名稱、編號、你的名字、進度、交稿日、階段日期、給對方看的備註、對話；勾選時才有金額和已付款。<br>
+  <b>不會被看到</b>：真實姓名、聯繫方式、私人備註、收款帳戶、付款明細、圖片和原檔、其他委託。<br>
+  拿到網址的人都能看，請只傳給對方本人。按「停止共享」後網址就打不開了。</p>
+  <p>第一次使用前：在「Google 表格同步」頁按「複製同步腳本」，貼到 Apps Script 全部取代，再到「部署 › 管理部署作業 › 編輯 › 版本：新版本」重新部署；「誰可以存取」要選「所有人」。</p>
+</details>`;
 function casePanel(c) {
   const sh = c.share, fo = c.follow, other = CLIENT() ? '繪師' : '委託人';
   const thread = (c.thread || []);
@@ -1631,12 +1679,13 @@ function casePanel(c) {
         ${d.pay ? `<div class="sub">金額 ${esc(d.pay.currency)} ${amt(d.pay.price)}｜已付 ${esc(d.pay.currency)} ${amt(d.pay.paid)}</div>` : ''}
         ${d.milestones.length ? `<div class="sub">${d.milestones.map((m) => `${m.done ? '✓' : '○'} ${esc(m.name)} ${esc(m.date)}`).join('<br>')}</div>` : ''}
         ${d.note ? `<div style="white-space:pre-wrap;font-size:14px" class="refitem">${PV() ? '（隱私模式）' : esc(d.note)}</div>` : ''}` : '<div class="sub">同步後就會顯示對方的進度</div>'}
-      <p class="hint" style="margin:0">對方更新進度、交稿日時，這一單會自動跟著改。</p>
+      <p class="hint" style="margin:0">這一單是${esc(d && d.owner || other)}分享的。對方更新進度、交稿日時，這裡會自動跟著改；在下面傳的訊息對方也會收到。你自己記的付款、備註只存在你的帳本。</p>
       ${convo}</section>`;
   }
   if (!sh || !sh.on) {
     return `<section class="panel col"><h2>共享個案頁</h2>
-      <p class="hint" style="margin:0">產生一個網址給${other}：可以看進度、交稿日和你寫的備註，也能直接留言，留言會自動進到聯繫紀錄。對方如果也用繪師委託帳本，貼上網址就能雙方同步。</p>
+      <p class="hint" style="margin:0">產生一個網址傳給${other}。${other}用瀏覽器打開就能看這一單的進度、交稿日和你寫的備註，也能直接留言；${other}如果也用繪師委託帳本，貼上網址就能雙方同步。</p>
+      ${CASE_HELP(other)}
       ${scriptUrl() ? `<button class="btn" data-act="caseShare" data-id="${c.id}">開啟共享</button>` : `<div class="sub">要先在「<a href="#/sync">Google 表格同步</a>」設定好你的 Apps Script。</div>`}
       ${thread.length ? convo : ''}</section>`;
   }
@@ -1646,13 +1695,15 @@ function casePanel(c) {
     <div class="row" style="flex-wrap:nowrap"><input type="text" readonly value="${esc(link)}" aria-label="共享網址" style="flex:1;font-size:12px"><button class="btn sm" data-act="caseCopy" data-id="${c.id}">複製</button></div>
     <label class="f">給對方看的備註<textarea data-chg="caseNote" data-id="${c.id}" rows="3" placeholder="例：草稿預計週五給你看；顏色有想改的可以直接留言">${esc(sh.note || '')}</textarea></label>
     <label class="chk"><input type="checkbox" data-chg="casePay" data-id="${c.id}" ${sh.showPay ? 'checked' : ''}> 顯示金額與已付款</label>
-    <p class="hint" style="margin:0">對方只看得到進度、交稿日、階段日期、這裡的備註和對話。內容在同步時更新。</p>
+    <p class="hint" style="margin:0">把網址傳給${other}就好。${other}只看得到進度、交稿日、階段日期、這裡的備註和對話（勾選時才有金額）。你改的內容和訊息會在同步時更新。</p>
+    ${CASE_HELP(other)}
     ${convo}</section>`;
 }
 function formFollowCase() {
   openModal(`<h2>加入對方分享的個案</h2>
   <form class="col mt" style="gap:10px">
-    <p class="hint" style="margin:0">對方在繪師委託帳本開啟「共享個案頁」後會給你一個網址。貼上後，這一單的進度、交稿日和對話會自動同步。</p>
+    <p class="hint" style="margin:0">對方在繪師委託帳本的某一單按「開啟共享」後，會傳給你一個網址（https://script.google.com/… 開頭）。貼在下面，連同其他文字一起貼也沒關係。</p>
+    <p class="hint" style="margin:0">加入後，帳本會建立這一單和對方的資料卡。對方改進度、交稿日時會自動同步；你們在這一單的對話框傳的訊息會互相收到。你不需要設定 Google 表格同步。</p>
     <textarea name="link" rows="3" placeholder="https://script.google.com/macros/s/……/exec?c=……" aria-label="共享網址" required></textarea>
     <div class="foot"><button type="button" class="btn" data-act="close">取消</button><button class="btn pri" type="submit">加入</button></div>
   </form>`, {
@@ -1680,6 +1731,68 @@ function formFollowCase() {
         }
         touch(c2); await commit();
       } else render();
+    }
+  });
+}
+
+// ───────── 用 QR code 連線電腦與手機 ─────────
+const linkUrl = (code) => `${(S.info && S.info.webUrl) || 'https://leihutw.github.io/artist_ledger/'}#/link/${code}`;
+function linkQr(code) {
+  if (typeof qrcode !== 'function' || !code) return '<div class="sub">無法產生 QR code，請改用下方的連線代碼</div>';
+  const q = qrcode(0, 'M'); q.addData(linkUrl(code)); q.make();
+  return q.createSvgTag({ cellSize: 5, margin: 3, scalable: true });
+}
+// 掃到的文字（網址或代碼）裡找出 AL1- 連線代碼
+const findLinkCode = (t) => { const m = String(t || '').match(/AL1-[A-Za-z0-9_-]+/); return m && Cloud.readCode(m[0]) ? m[0] : ''; };
+function confirmLink(code) {
+  openModal(`<h2>連線到電腦的同步？</h2>
+    <p>連線後，這支手機的繪師帳和委託者帳會和電腦自動同步。手機裡原本的資料會和電腦的合併，不會被刪掉。</p>
+    <p class="hint">只有你自己的電腦產生的 QR code 才要連線。別人給你的 QR code 請不要按連線。</p>
+    <div class="foot"><button class="btn" data-act="close">取消</button><button class="btn pri" data-linkgo>連線</button></div>`, {
+    onOpen: (root) => root.querySelector('[data-linkgo]').addEventListener('click', async () => {
+      const r = await api.cloudSet({ code });
+      if (r.error) { toast(r.error, 4000); return; }
+      closeModal(); S.cloud = r; go('#/sync'); toast('已連線，開始同步…'); A.runCloud();
+    })
+  });
+}
+function loadJsQR() {
+  if (window.jsQR) return Promise.resolve();
+  return new Promise((ok, bad) => { const sc = document.createElement('script'); sc.src = 'jsQR.js'; sc.onload = ok; sc.onerror = () => bad(new Error('掃描元件載入失敗')); document.head.appendChild(sc); });
+}
+async function scanQr() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('這個瀏覽器不能用相機，請改用手機相機掃描，或貼上連線代碼', 5000); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }); }
+  catch (e) { toast('沒有相機權限：請在瀏覽器設定允許使用相機，或改貼連線代碼', 5000); return; }
+  let stop = false;
+  const end = () => { stop = true; stream.getTracks().forEach((t) => t.stop()); };
+  openModal(`<h2>掃描 QR code</h2>
+    <p class="hint" style="margin:0">對準電腦版「Google 表格同步 › 電腦與手機同步」顯示的 QR code。</p>
+    <video class="qrvideo mt" playsinline muted></video><canvas hidden></canvas>
+    <div class="foot"><button class="btn" data-act="close">取消</button></div>`, {
+    onClose: end,
+    onOpen: async (root) => {
+      const v = root.querySelector('video'), cv = root.querySelector('canvas'), ctx = cv.getContext('2d', { willReadFrequently: true });
+      v.srcObject = stream; try { await v.play(); } catch (e) { /* 有些瀏覽器要等使用者點一下 */ }
+      let det = null;
+      if ('BarcodeDetector' in window) { try { det = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { det = null; } }
+      if (!det) { try { await loadJsQR(); } catch (e) { toast(e.message); } }
+      const tick = async () => {
+        if (stop) return;
+        if (v.readyState >= 2 && v.videoWidth) {
+          let text = '';
+          try {
+            if (det) { const r = await det.detect(v); text = r[0] && r[0].rawValue; }
+            else if (window.jsQR) { const w = Math.min(640, v.videoWidth), h = Math.round(v.videoHeight * w / v.videoWidth); cv.width = w; cv.height = h; ctx.drawImage(v, 0, 0, w, h); const r = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h); text = r && r.data; }
+          } catch (e) { /* 這一格沒掃到 */ }
+          const code = text && findLinkCode(text);
+          if (code) { closeModal(); confirmLink(code); return; }
+          if (text) toast('這不是繪師委託帳本的連線 QR code');
+        }
+        setTimeout(tick, 200);
+      };
+      tick();
     }
   });
 }
@@ -1737,7 +1850,7 @@ const A = {
     const bad = rs.find((x) => !x.ok), inc = rs.reduce((a, x) => a + (x.incoming || 0), 0);
     toast(bad ? `同步失敗：${bad.error}` : !rs.length ? '還沒有設定同步' : `${rs.every((x) => x.casesOnly) ? '共享個案已更新' : '電腦與手機已同步'}${inc ? `，收到 ${inc} 則新訊息` : ''}`, 5000);
   },
-  copyCode: async () => { await api.copyText((S.cloud || {}).code || ''); toast('已複製連線代碼，到另一台裝置的「Google 表格同步 › 電腦與手機同步」貼上'); },
+  copyCode: async () => { await api.copyText((S.cloud || {}).code || ''); toast('已複製連線代碼。請直接貼到另一台裝置，不要用 LINE 或 Email 傳送', 5000); },
   openWidget: () => api.openWidget(),
   newCommission: () => formCommission(),
   newCommissionFor: (el) => formCommission(null, el.dataset.id),
@@ -1746,6 +1859,9 @@ const A = {
   openClient: (el) => go(`#/client/${el.dataset.id}`),
   zoom: (el) => { try { localStorage.setItem('al-zoom', el.dataset.v); } catch (e) { /* 忽略 */ } applyZoom(); render(); },
   cardEdit: () => formMyCard(),
+  qrShow: () => { S.qrShow = true; render(); clearTimeout(S.qrTimer); S.qrTimer = setTimeout(() => { S.qrShow = false; render(); }, 120000); },
+  qrHide: () => { S.qrShow = false; clearTimeout(S.qrTimer); render(); },
+  qrScan: () => scanQr(),
   caseShare: async (el) => { const c = comm(el.dataset.id); c.share = Object.assign({ key: newCaseKey(), note: '', showPay: false }, c.share || {}, { on: true }); touch(c); await commit('已開啟共享，同步後網址就能用'); A.runCloud(); },
   caseStop: async (el) => { const c = comm(el.dataset.id); if (!confirm('停止共享後，原本的網址就打不開了。確定嗎？')) return; c.share.on = false; touch(c); await commit('已停止共享'); A.runCloud(); },
   caseCopy: async (el) => { const c = comm(el.dataset.id); await api.copyText(Cloud.caseLink(scriptUrl(), c.share.key)); toast('已複製共享網址'); },
@@ -1956,7 +2072,7 @@ const A = {
   },
   newToken: async () => {
     if (S.db.settings.sync.token && !(await confirmBox('重新產生同步密碼？', '舊的腳本會失效，需要重新複製腳本貼到 Apps Script 並重新部署；手機也要重新貼上連線代碼。', '重新產生'))) return;
-    await api.newToken(); S.db = await api.getDb(); S.cloud = await api.cloudGet(); render(); toast('已產生同步密碼');
+    await api.newToken(); S.db = await api.getDb(); S.cloud = await api.cloudGet(); render(); toast('已產生新的同步密碼：記得重新複製腳本貼到 Apps Script 並部署新版本', 6000);
   },
   openPublic: () => api.openPublicPage(),
   exportPublic: async () => { const r = await api.exportPublicPage(); if (r.ok) toast('已匯出排單網頁'); },

@@ -5,7 +5,7 @@
 (function () {
 'use strict';
 const M = window.Model, Sh = window.Sheets, Cloud = window.Cloud;
-const VERSION = '1.4.0';
+const VERSION = '1.4.2';
 const DBNAME = 'artist-ledger';
 
 // ───────── IndexedDB ─────────
@@ -261,7 +261,7 @@ window.api = {
   minimizeWidget: async () => true,
   setOnTop: async (on) => !!on,
   setAutostart: async (on) => !!on,
-  info: async () => { await ready; return { version: VERSION, dataDir: '（這支手機的瀏覽器）', platform: 'web', portable: false, hasBuiltinUpdateUrl: false, web: true }; },
+  info: async () => { await ready; return { version: VERSION, dataDir: '（這支手機的瀏覽器）', platform: 'web', portable: false, hasBuiltinUpdateUrl: false, web: true, webUrl: location.origin + location.pathname.replace(/index\.html$/, '') }; },
   checkUpdate: async () => ({ ok: true, newer: false, current: VERSION }),
   setPrivacy: async (on) => { for (const b of M.BOOKS) { st.dbs[b].settings.privacyMode = !!on; await saveDb(st.dbs[b]); } return !!on; },
   openUpdatePage: async () => false,
