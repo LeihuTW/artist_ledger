@@ -5,14 +5,14 @@
 - **繪師帳**：記錄接到的委託、收款、死線，可以做公開排單。
 - **委託者帳**：記錄你委託繪師的進度、付款、交稿日，並為每位繪師建一張資料卡（排單頁、價目表、收款方式）。
 
-目前版本：**1.4.0**｜製作人 肯茲｜問題回報：leihustore@gmail.com
+目前版本：**1.4.2**｜製作人 肯茲｜問題回報：leihustore@gmail.com
 
 ## 下載
 
 | 版本 | 下載 | 說明 |
 |---|---|---|
-| Windows 安裝版 | [ArtistLedger-Setup-1.4.0.exe](https://github.com/LeihuTW/artist_ledger/raw/main/downloads/ArtistLedger-Setup-1.4.0.exe) | 一般使用者選這個 |
-| Windows 免安裝版 | [ArtistLedger-Portable-1.4.0.exe](https://github.com/LeihuTW/artist_ledger/raw/main/downloads/ArtistLedger-Portable-1.4.0.exe) | 解壓縮到資料夾就能用，可放隨身碟 |
+| Windows 安裝版 | [ArtistLedger-Setup-1.4.2.exe](https://github.com/LeihuTW/artist_ledger/raw/main/downloads/ArtistLedger-Setup-1.4.2.exe) | 一般使用者選這個 |
+| Windows 免安裝版 | [ArtistLedger-Portable-1.4.2.exe](https://github.com/LeihuTW/artist_ledger/raw/main/downloads/ArtistLedger-Portable-1.4.2.exe) | 解壓縮到資料夾就能用，可放隨身碟 |
 | 網頁版本 | **[https://leihutw.github.io/artist_ledger/](https://leihutw.github.io/artist_ledger/)** | 用手機瀏覽器打開，加到主畫面 |
 
 檔案檢查碼在 [`downloads/SHA256.txt`](downloads/SHA256.txt)。
@@ -33,13 +33,13 @@
 ## 電腦版（Windows 10／11）
 
 ### 安裝版
-1. 下載 `ArtistLedger-Setup-1.4.0.exe` 並執行。
+1. 下載 `ArtistLedger-Setup-1.4.2.exe` 並執行。
 2. Windows 若跳出「Windows 已保護您的電腦」，按「其他資訊 › 仍要執行」（程式沒有付費的程式碼簽章，所以會出現這個提示）。
 3. 不需要系統管理員權限。資料存在「文件\ArtistLedger」，解除安裝時不會刪除。
 4. 第一次開啟會有設定精靈，記得到「設定與備份」加一個備份位置。
 
 ### 免安裝版
-1. 下載 `ArtistLedger-Portable-1.4.0.exe` 並執行，選一個資料夾（例如 `D:\ArtistLedger-Portable`），程式會解壓縮到那裡。
+1. 下載 `ArtistLedger-Portable-1.4.2.exe` 並執行，選一個資料夾（例如 `D:\ArtistLedger-Portable`），程式會解壓縮到那裡。
 2. 之後執行資料夾裡的 `ArtistLedger.exe`。資料存在同資料夾的 `data`，整個資料夾可以帶著走。
 3. 請不要刪掉資料夾裡的 `portable.txt`，也不要放在「Program Files」。
 4. 免安裝版沒有開始功能表捷徑，Windows 可能不會跳提醒，到「設定與備份」按「建立桌面與開始功能表捷徑」即可。
@@ -58,13 +58,23 @@
 ### 資料存在哪裡
 手機版的資料存在那支手機的瀏覽器裡，不會傳到這個網站。清除瀏覽器資料會一併刪掉，所以建議一定要設定同步，或定期在「設定與備份」匯出備份檔。
 
-### 和電腦同步
+### 和電腦同步（掃 QR code）
 1. 電腦版先完成「Google 表格同步」的設定（頁面上有步驟）。
-2. 在電腦版「Google 表格同步 › 電腦與手機同步」按「複製」連線代碼（`AL1-` 開頭）。
-3. 把代碼傳到手機，貼到手機版同一頁的輸入框，按「連線」。
+2. 在電腦版「Google 表格同步 › 電腦與手機同步」按「顯示 QR code 與連線代碼」。
+3. 用手機相機掃 QR code，點出現的網址，手機版打開後按「連線」就完成了。
+   - iPhone 已經把手機版加到主畫面的話：請打開主畫面的 App，到「Google 表格同步」按「掃描 QR code 連線」來掃，資料才會存在那個 App 裡。
+   - 掃不到時的備用方案：在電腦按「複製」連線代碼（`AL1-` 開頭），貼到手機版同一頁的輸入框，按「連線」。
 4. 之後兩邊會自動同步：修改後約 15 秒上傳，打開 App 時拉取最新資料。繪師帳和委託者帳都會同步。
 
-資料存在你自己的 Google 試算表，不會經過其他伺服器。連線代碼等於同步密碼，請不要公開。圖片不會同步，只同步文字資料。
+**這組代碼等於你的帳本鑰匙，請不要用 LINE 或 Email 傳送，也不要截圖。** QR code 和代碼 2 分鐘後會自動隱藏，隱私模式中不顯示。資料存在你自己的 Google 試算表，不會經過其他伺服器。圖片不會同步，只同步文字資料。
+
+### 手機掉了怎麼辦
+1. 在電腦版「Google 表格同步」頁，同步密碼旁按「重新產生」。
+2. 按「複製同步腳本」，回到 Apps Script 全部刪掉後貼上。
+3. 在 Apps Script 按「部署 › 管理部署作業」，按鉛筆圖示「編輯」，版本選「新版本」，按「部署」（網址不會變）。
+4. 其他還要用的裝置，重新掃 QR code 或輸入新的連線代碼。
+
+完成後，掉的那支手機就不能再讀取或修改你的帳本。代碼不小心傳出去或被截圖時，也照這個步驟換掉。
 
 ## 分享給對方
 

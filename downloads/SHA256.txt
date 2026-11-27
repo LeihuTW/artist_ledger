@@ -1,2 +1,2 @@
-f96450577fbf75c3f7854eb6fbbf3ce0784295f2877ca8a0693b6cea049a2baf  ArtistLedger-Portable-1.4.0.exe
-f987b6431308e061dbdf6427ba7e793a63c6081a9e25585e5bed419b9d605028  ArtistLedger-Setup-1.4.0.exe
+89e099a322b23b417f18345f875ba600b2d9232174f0de4f0c3a6ba60a6733d7  ArtistLedger-Portable-1.4.2.exe
+25b64c922268d31ea5c9a256d65378e3a9bfd2a631bdf24fabeb2ab21aff0f86  ArtistLedger-Setup-1.4.2.exe
